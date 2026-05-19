@@ -20,6 +20,7 @@ const btnDelete = document.getElementById('btnDelete');
 
 // --- Global State ---
 let petsFileBuffer = null;
+let ppePdfFileBuffer = null;
 
 if (fileUpload) {
     // Click is handled by native onclick in index.html to prevent blocking
@@ -29,7 +30,6 @@ if (fileUpload) {
 }
 
 if (btnUploadPets && petsUpload) {
-    // Click is handled by native onclick in index.html
     petsUpload.addEventListener('change', async (e) => {
         if (e.target.files.length) {
             const file = e.target.files[0];
@@ -41,6 +41,42 @@ if (btnUploadPets && petsUpload) {
                 name.textContent = file.name;
             }
         }
+    });
+}
+
+const btnRemovePets = document.getElementById('btnRemovePets');
+if (btnRemovePets) {
+    btnRemovePets.addEventListener('click', () => {
+        petsFileBuffer = null;
+        if(petsUpload) petsUpload.value = '';
+        const status = document.getElementById('petsStatus');
+        if (status) status.classList.add('hidden');
+    });
+}
+
+const ppePdfUpload = document.getElementById('ppePdfUpload');
+if (ppePdfUpload) {
+    ppePdfUpload.addEventListener('change', async (e) => {
+        if (e.target.files.length) {
+            const file = e.target.files[0];
+            ppePdfFileBuffer = await file.arrayBuffer();
+            const status = document.getElementById('ppePdfStatus');
+            const name = document.getElementById('ppePdfFileName');
+            if (status && name) {
+                status.classList.remove('hidden');
+                name.textContent = file.name;
+            }
+        }
+    });
+}
+
+const btnRemovePpePdf = document.getElementById('btnRemovePpePdf');
+if (btnRemovePpePdf) {
+    btnRemovePpePdf.addEventListener('click', () => {
+        ppePdfFileBuffer = null;
+        if(ppePdfUpload) ppePdfUpload.value = '';
+        const status = document.getElementById('ppePdfStatus');
+        if (status) status.classList.add('hidden');
     });
 }
 
@@ -77,6 +113,7 @@ let pdfBaseScale     = 4.0;    // Render scale used for base canvas dimensions
 let pdfBaseW         = 0;      // Canvas width  (fabric units) at base scale
 let pdfBaseH         = 0;      // Canvas height (fabric units) at base scale
 let pdfRerenderTimer = null;   // Debounce handle for zoom-triggered re-render
+let pdfCropCoords    = null;   // Stores {x, y, w, h} in PDF points for lossless crop
 
 // --- Pan & Zoom ---
 canvas.on('mouse:wheel', function (opt) {
@@ -230,20 +267,13 @@ window.addEventListener('resize', () => {
     // but the canvas itself stays fixed to image resolution
 });
 
-const btnRemovePets = document.getElementById('btnRemovePets');
-if (btnRemovePets) {
-    btnRemovePets.addEventListener('click', () => {
-        petsFileBuffer = null;
-        const status = document.getElementById('petsStatus');
-        if (status) status.classList.add('hidden');
-        if (petsUpload) petsUpload.value = '';
-    });
-}
+
 
 function handleFile(file) {
     if (!file) return;
 
     const fileType = file.type;
+    pdfCropCoords = null; // Clear any previous crop coordinates for the new file
 
     // Unhide tools
     if (toolsPanel) toolsPanel.classList.remove('opacity-30', 'pointer-events-none');
@@ -566,6 +596,18 @@ btnApplyCrop.addEventListener('click', () => {
 
         canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
 
+        // Store crop coordinates in PDF space for lossless export
+        if (currentPdfPage) {
+            const viewport = currentPdfPage.getViewport({ scale: 1.0 });
+            // Convert canvas crop coordinates (based on pdfBaseScale) back to PDF points
+            pdfCropCoords = {
+                x: cropX / pdfBaseScale,
+                y: (pdfBaseH - cropY - cropH) / pdfBaseScale, // PDF coordinates are bottom-up
+                w: cropW / pdfBaseScale,
+                h: cropH / pdfBaseScale
+            };
+        }
+
         // Shift all drawn objects so they stay in relative position
         canvas.getObjects().forEach(o => {
             o.set({
@@ -761,6 +803,7 @@ function handleSelection() {
 const propertiesPanel = document.getElementById('propertiesPanel');
 const textOnlyProps = document.getElementById('textOnlyProps');
 const propSymbolText = document.getElementById('propSymbolText');
+const propSymbolDesc = document.getElementById('propSymbolDesc');
 const propFontSize = document.getElementById('propFontSize');
 const propFillColor = document.getElementById('propFillColor');
 
@@ -775,6 +818,7 @@ function updatePropertiesPanel() {
         textOnlyProps.classList.add('flex');
 
         propSymbolText.value = activeObj.text || '';
+        propSymbolDesc.value = activeObj.itemDescription || '';
         propFontSize.value = activeObj.fontSize;
 
         // Match color strictly to dropdown
@@ -791,6 +835,7 @@ function updatePropertiesPanel() {
         textOnlyProps.classList.remove('flex');
 
         propSymbolText.value = activeObj.tooltipText || '';
+        propSymbolDesc.value = activeObj.itemDescription || '';
         const textObj = activeObj.getObjects().find(o => o.id === 'symbolLabel');
         if (textObj) {
             let color = textObj.fill.toUpperCase();
@@ -811,12 +856,15 @@ function applyProperties() {
     if (activeObj && activeObj.type === 'i-text') {
         activeObj.set({
             text: propSymbolText.value,
+            tooltipText: propSymbolText.value,
+            itemDescription: propSymbolDesc.value,
             fontSize: parseInt(propFontSize.value, 10),
             fill: propFillColor.value
         });
         canvas.renderAll();
     } else if (activeObj && activeObj.isSymbolGroup) {
         activeObj.set('tooltipText', propSymbolText.value);
+        activeObj.set('itemDescription', propSymbolDesc.value);
         const textObj = activeObj.getObjects().find(o => o.id === 'symbolLabel');
         if (textObj) {
             textObj.set({
@@ -830,6 +878,7 @@ function applyProperties() {
 }
 
 propSymbolText.addEventListener('input', applyProperties);
+propSymbolDesc.addEventListener('input', applyProperties);
 propFontSize.addEventListener('input', applyProperties);
 propFillColor.addEventListener('change', applyProperties);
 
@@ -857,104 +906,87 @@ document.addEventListener('keydown', (e) => {
 document.getElementById('btnExport').addEventListener('click', async () => {
     const btn = document.getElementById('btnExport');
     const originalContent = btn.innerHTML;
-    
+
     if (canvas.getObjects().length === 0 && !canvas.backgroundImage) {
         alert('No hay documento para descargar.');
         return;
     }
     try {
-        // 1. Change button state
         btn.disabled = true;
         btn.innerHTML = `<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> Procesando alta resolución...`;
         lucide.createIcons();
 
         const format = document.getElementById('exportFormat').value;
 
-        // 2. Prepare for High-Res Export
+        // Deselect so handles don't appear
         canvas.discardActiveObject();
-        
-        // Calculate the maximum possible scale for the browser (target 16000px)
-        // Use the current background bounds (respects cropping)
-        const bg = canvas.backgroundImage;
-        const docW = bg ? bg.width * bg.scaleX : (pdfBaseW || canvas.width);
+        canvas.renderAll();
+
+        // Document natural dimensions (independent of current zoom/pan)
+        const bg   = canvas.backgroundImage;
+        const docW = bg ? bg.width  * bg.scaleX : (pdfBaseW || canvas.width);
         const docH = bg ? bg.height * bg.scaleY : (pdfBaseH || canvas.height);
-        const docL = bg ? bg.left : 0;
-        const docT = bg ? bg.top : 0;
 
-        const currentMaxDim = Math.max(docW, docH);
-        // Target 12000px for a perfect balance between extreme sharpness and browser stability
-        const exportScaleTarget = 12000;
-        let multiplier = Math.max(1.0, exportScaleTarget / currentMaxDim);
-        
-        // Ensure we don't exceed the 16k browser limit in any dimension
-        const finalW = docW * multiplier;
-        const finalH = docH * multiplier;
-        if (finalW > 16384 || finalH > 16384) {
-            const capRatio = 16384 / Math.max(finalW, finalH);
-            multiplier *= capRatio;
+        // Target 8000 px on longest side; cap at 16384 px (browser limit)
+        let multiplier = Math.max(1.0, 8000 / Math.max(docW, docH));
+        if (docW * multiplier > 16384 || docH * multiplier > 16384) {
+            multiplier = 16384 / Math.max(docW, docH);
         }
-        
-        // 1. Capture current state to restore later
-        const oldBG = canvas.backgroundImage;
-        const oldVpt = [...canvas.viewportTransform];
-        const oldZoom = canvas.getZoom();
-        const oldBGColor = canvas.backgroundColor;
-        const isPDFOverlay = !!currentPdfPage && format === 'pdf';
 
-        // 2. Prepare for High-Res Capture
-        if (isPDFOverlay) {
-            canvas.backgroundImage = null; 
-            canvas.backgroundColor = 'transparent';
-        }
+        // ── Save current viewport state ──────────────────────────────────────
+        const savedVpt    = [...canvas.viewportTransform];
+        const savedWidth  = canvas.width;
+        const savedHeight = canvas.height;
+
+        // ── Reset to document space ──────────────────────────────────────────
+        // With identity viewport: Fabric object coords = document coords.
+        // toDataURL's left/top/width/height crops the exact document region
+        // regardless of what zoom the user had when placing icons.
         canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+        if (bg) bg.set('opacity', 1);
+        canvas.backgroundColor = '#ffffff';
+        canvas.renderAll();
 
-        // 3. Capture High-Res DataURL (Fabric 4.x style)
-        const dataURL = canvas.toDataURL({
-            format: 'png',
-            left: docL,
-            top: docT,
-            width: docW,
-            height: docH,
-            multiplier: multiplier
+        // Capture EVERYTHING (background + icons) in one single call
+        const compositeDataURL = canvas.toDataURL({
+            format:              'png',
+            left:                0,
+            top:                 0,
+            width:               docW,
+            height:              docH,
+            multiplier:          multiplier,
+            enableRetinaScaling: false
         });
 
-        // 4. Convert DataURL to ArrayBuffer safely for PDF generation
-        const base64Data = dataURL.split(',')[1];
-        const binaryData = atob(base64Data);
-        const imageBuffer = new Uint8Array(binaryData.length);
-        for (let i = 0; i < binaryData.length; i++) {
-            imageBuffer[i] = binaryData.charCodeAt(i);
-        }
+        // ── Restore view ─────────────────────────────────────────────────────
+        canvas.setDimensions({ width: savedWidth, height: savedHeight });
+        canvas.setViewportTransform(savedVpt);
+        canvas.renderAll();
 
         if (format === 'png') {
             const link = document.createElement('a');
             link.download = 'Diagrama_Unifilar_ABB_Alta_Res.png';
-            link.href = URL.createObjectURL(new Blob([imageBuffer], { type: 'image/png' }));
+            link.href = compositeDataURL;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+
         } else {
-            // High-Res PDF Export
-            await handlePDFExport(imageBuffer, docW, docH, isPDFOverlay);
+            // Convert dataURL → Uint8Array for pdf-lib
+            const b64 = compositeDataURL.split(',')[1];
+            const bin = atob(b64);
+            const buf = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+            await handlePDFExport(buf, docW, docH, false);
         }
 
-        // 5. RESTORE STATE
-        canvas.backgroundColor = oldBGColor;
-        canvas.setBackgroundImage(oldBG, () => {
-            canvas.setViewportTransform(oldVpt);
-            canvas.setZoom(oldZoom);
-            canvas.renderAll();
-        });
-        
         btn.disabled = false;
         btn.innerHTML = originalContent;
         lucide.createIcons();
 
     } catch (err) {
         console.error(err);
-        alert("Error en la exportación de alta resolución.");
-        
-        // Ensure UI is restored on error
+        alert('Error en la exportación: ' + err.message);
         btn.disabled = false;
         btn.innerHTML = originalContent;
         lucide.createIcons();
@@ -966,53 +998,78 @@ document.getElementById('btnExport').addEventListener('click', async () => {
  * If useOverlay is true, it embeds the image on top of the original PDF page.
  */
 async function handlePDFExport(imageBuffer, docW, docH, useOverlay = false) {
-    const { PDFDocument, rgb } = PDFLib;
-    let pdfDoc;
-    let mainPage;
+    const { PDFDocument } = PDFLib;
+    const pdfDoc = await PDFDocument.create();
 
-    const unifilarBuffer = window.originalUnifilarBuffer;
-
-    if (useOverlay && unifilarBuffer) {
-        pdfDoc = await PDFDocument.load(unifilarBuffer);
-        
-        if (petsFileBuffer) {
-            try {
-                const petsDoc = await PDFDocument.load(petsFileBuffer);
-                const petsPages = await pdfDoc.copyPages(petsDoc, petsDoc.getPageIndices());
-                petsPages.forEach(p => pdfDoc.addPage(p));
-            } catch (e) { console.error("Error consolidando PETS:", e); }
-        }
-
-        mainPage = pdfDoc.getPages()[0];
-        const { width, height } = mainPage.getSize();
-        docW = width;
-        docH = height;
-    } else {
-        pdfDoc = await PDFDocument.create();
-        mainPage = pdfDoc.addPage([docW, docH]);
-        
-        if (petsFileBuffer) {
-            try {
-                const petsDoc = await PDFDocument.load(petsFileBuffer);
-                const petsPages = await pdfDoc.copyPages(petsDoc, petsDoc.getPageIndices());
-                petsPages.forEach(p => pdfDoc.addPage(p));
-            } catch (e) { console.error("Error consolidando PETS:", e); }
-        }
+    // 1. PETS pages first
+    if (petsFileBuffer) {
+        try {
+            const petsDoc  = await PDFDocument.load(petsFileBuffer);
+            const petsPages = await pdfDoc.copyPages(petsDoc, petsDoc.getPageIndices());
+            petsPages.forEach(p => pdfDoc.addPage(p));
+        } catch (e) { console.error('Error consolidando PETS:', e); }
     }
 
+    // 2. PPE annex pages
+    if (ppePdfFileBuffer) {
+        try {
+            const ppeDoc   = await PDFDocument.load(ppePdfFileBuffer);
+            const ppePages = await pdfDoc.copyPages(ppeDoc, ppeDoc.getPageIndices());
+            ppePages.forEach(p => pdfDoc.addPage(p));
+        } catch (e) { console.error('Error consolidando PPE PDF:', e); }
+    }
+
+    // 3. Unifilar page — preserve the composite's aspect ratio so nothing
+    //    gets stretched. If the user cropped, docW/docH reflects the crop.
+    const aspectRatio = docW / docH;
+
+    // Default: scale to a reasonable PDF size (A3 landscape ~ 1190 x 842 pts)
+    let pageW, pageH;
+
+    const unifilarBuffer = window.originalUnifilarBuffer;
+    if (unifilarBuffer) {
+        try {
+            const srcDoc  = await PDFDocument.load(unifilarBuffer);
+            const srcPage = srcDoc.getPage(0);
+            const sz      = srcPage.getSize();
+            // Use the longest original dimension, but apply the composite's
+            // aspect ratio so proportions are never distorted.
+            const maxDim = Math.max(sz.width, sz.height);
+            if (aspectRatio >= 1) {          // landscape or square
+                pageW = maxDim;
+                pageH = maxDim / aspectRatio;
+            } else {                         // portrait
+                pageH = maxDim;
+                pageW = maxDim * aspectRatio;
+            }
+        } catch (e) {
+            console.error('Could not read original PDF size:', e);
+            pageW = docW;
+            pageH = docH;
+        }
+    } else {
+        pageW = docW;
+        pageH = docH;
+    }
+
+    const mainPage = pdfDoc.addPage([pageW, pageH]);
+
+    // Embed composite (background + icons already merged) and fill the page
     const pngImage = await pdfDoc.embedPng(imageBuffer);
-    
     mainPage.drawImage(pngImage, {
-        x: 0, y: 0, width: docW, height: docH,
+        x:      0,
+        y:      0,
+        width:  pageW,
+        height: pageH,
     });
 
     await injectSummaryTable(pdfDoc);
 
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
+    const url  = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = url;
+    link.href     = url;
     link.download = 'Unifilar_Consolidado_ABB_HQ.pdf';
     document.body.appendChild(link);
     link.click();
@@ -1022,17 +1079,23 @@ async function handlePDFExport(imageBuffer, docW, docH, useOverlay = false) {
 
 async function injectSummaryTable(pdfDoc) {
     const { StandardFonts, rgb } = PDFLib;
-    const symbols = canvas.getObjects().filter(o => o.isSymbolGroup);
+    
+    // Robust detection: capture everything with a label or tooltip
+    const symbols = canvas.getObjects().filter(o => 
+        o.isSymbolGroup === true || (o.tooltipText && o.tooltipText.length > 0)
+    );
+
     if (symbols.length === 0) return;
 
-    // Group symbols by baseName
+    // Group symbols by their base category (e.g., all "Bloqueo LOTO" together)
     const groupedSymbols = {};
     symbols.forEach(sym => {
-        const typeName = sym.baseName || sym.tooltipText || 'Elemento';
-        if (!groupedSymbols[typeName]) {
-            groupedSymbols[typeName] = [];
+        // For symbols, use baseName. For plain text, use a generic "Textos" category.
+        const groupKey = sym.baseName || (sym.type === 'i-text' ? 'Anotaciones y Texto' : 'Otros');
+        if (!groupedSymbols[groupKey]) {
+            groupedSymbols[groupKey] = [];
         }
-        groupedSymbols[typeName].push(sym);
+        groupedSymbols[groupKey].push(sym);
     });
 
     const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -1044,8 +1107,9 @@ async function injectSummaryTable(pdfDoc) {
     const tableWidth = pageW - margin * 2;
 
     const col = {
-        num:  { x: margin,       w: 35 },
-        desc: { x: margin + 35,  w: tableWidth - 35 },
+        num:  { x: margin,       w: 30 },
+        name: { x: margin + 30,  w: 150 },
+        desc: { x: margin + 180, w: tableWidth - 180 },
     };
     const rowH = 18;
     const headerH = 22;
@@ -1071,7 +1135,7 @@ async function injectSummaryTable(pdfDoc) {
     }
 
     function drawVLines(page, yTop, yBottom) {
-        [margin, col.desc.x, margin + tableWidth].forEach(x => {
+        [margin, col.name.x, col.desc.x, margin + tableWidth].forEach(x => {
             page.drawLine({
                 start: { x, y: yTop },
                 end:   { x, y: yBottom },
@@ -1114,12 +1178,16 @@ async function injectSummaryTable(pdfDoc) {
             x: margin, y: y, width: tableWidth, height: headerH, color: rgb(0.85, 0, 0.06),
         });
         page.drawText('N°', { x: col.num.x + 4, y: y + 6, size: 10, font: helveticaBold, color: rgb(1, 1, 1) });
-        page.drawText('Descripción / Etiqueta', { x: col.desc.x + 4, y: y + 6, size: 10, font: helveticaBold, color: rgb(1, 1, 1) });
-        page.drawLine({
-            start: { x: col.desc.x, y: y },
-            end:   { x: col.desc.x, y: y + headerH },
-            thickness: 0.5,
-            color: rgb(1, 1, 1),
+        page.drawText('Etiqueta', { x: col.name.x + 4, y: y + 6, size: 10, font: helveticaBold, color: rgb(1, 1, 1) });
+        page.drawText('Descripción / Notas', { x: col.desc.x + 4, y: y + 6, size: 10, font: helveticaBold, color: rgb(1, 1, 1) });
+        
+        [col.name.x, col.desc.x].forEach(x => {
+            page.drawLine({
+                start: { x, y: y },
+                end:   { x, y: y + headerH },
+                thickness: 0.5,
+                color: rgb(1, 1, 1),
+            });
         });
         return y + headerH;
     };
@@ -1162,22 +1230,25 @@ async function injectSummaryTable(pdfDoc) {
 
             drawRowBg(summaryPage, yOffset - rowH, rowH, 1, 1, 1);
             summaryPage.drawText(`${index + 1}`, { x: col.num.x + 4, y: yOffset - rowH + 5, size: 9, font: helveticaFont, color: rgb(0.15, 0.15, 0.15) });
-            summaryPage.drawText(`${sym.tooltipText || groupName}`, { x: col.desc.x + 4, y: yOffset - rowH + 5, size: 9, font: helveticaFont, color: rgb(0.15, 0.15, 0.15) });
+            summaryPage.drawText(`${sym.tooltipText || sym.text || groupName}`, { x: col.name.x + 4, y: yOffset - rowH + 5, size: 9, font: helveticaFont, color: rgb(0.15, 0.15, 0.15) });
+            
+            const descText = sym.itemDescription || '-';
+            let finalDesc = descText;
+            const maxChars = Math.floor(col.desc.w / 5.5); // Very rough estimate for Helvetica size 9
+            if (finalDesc.length > maxChars) {
+                finalDesc = finalDesc.substring(0, maxChars - 3) + '...';
+            }
+            summaryPage.drawText(finalDesc, { x: col.desc.x + 4, y: yOffset - rowH + 5, size: 9, font: helveticaFont, color: rgb(0.15, 0.15, 0.15) });
             drawHLine(summaryPage, yOffset);
             drawHLine(summaryPage, yOffset - rowH);
             drawVLines(summaryPage, yOffset, yOffset - rowH);
             yOffset -= rowH;
         });
         yOffset -= 10;
+        // We will merge the uploaded PPE PDF in the handlePDFExport instead of calculating here
     });
 }
 
-
-
-// --- Tooltips for Canvas Objects ---
-const canvasTooltip = document.createElement('div');
-canvasTooltip.className = 'absolute bg-gray-800 text-white text-xs px-2 py-1 rounded pointer-events-none opacity-0 transition-opacity z-50';
-document.body.appendChild(canvasTooltip);
 
 canvas.on('mouse:over', function (e) {
     if (e.target && e.target.tooltipText) {
