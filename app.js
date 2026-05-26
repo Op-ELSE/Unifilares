@@ -684,8 +684,35 @@ if (btnAppendArcFlashToPdf) {
         btnAppendArcFlashToPdf.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Añadiendo...`;
         if (window.lucide) window.lucide.createIcons();
 
-        const pdfBytes = await generateArcFlashPDFBytes();
-        if (pdfBytes) {
+        const pdfBytes = await window.pdfTemplateHelper.populateTemplate({
+            systemVoltage: document.getElementById('af_voltage')?.value || '--',
+            upstreamBreaker: document.getElementById('af_breaker')?.value || '--',
+            shortCircuit: document.getElementById('af_isc')?.value || '--',
+            energyStorage: document.getElementById('af_ecap')?.value || '--',
+            openingTime: document.getElementById('af_time')?.value || '--',
+            workingDistance: (parseFloat(document.getElementById('af_voltage')?.value) <= 600 ? '455 mm (18 in)' : '910 mm (36 in)'),
+            powerForArc: (() => {
+                const v = parseFloat(document.getElementById('af_voltage')?.value) || 0;
+                const i = parseFloat(document.getElementById('af_breaker')?.value) || 0;
+                return ((v * Math.sqrt(3) * i) / 1000).toFixed(1);
+            })(),
+            incidentEnergy: document.getElementById('lbl_energy')?.textContent.replace(' cal/cm²', '').trim() || '--',
+            arcFlashApproach: document.getElementById('lbl_arcBoundary')?.textContent || '--',
+            limitsApproach: '--',
+            restrictedApproach: '--',
+            exposedMovable: '--',
+            arcFlashBoundary: document.getElementById('lbl_arcBoundary')?.textContent || '--',
+            glove: document.getElementById('lbl_gloves')?.textContent || '--',
+            requiredPPE: document.getElementById('lbl_ppe')?.textContent || '--',
+            footwear: document.getElementById('lbl_footwear')?.textContent || '--',
+            shockHazard: document.getElementById('lbl_shockV')?.textContent || '--',
+            limitedApproach: document.getElementById('lbl_limited')?.textContent || '--',
+            restrictedApproach2: document.getElementById('lbl_restricted')?.textContent || '--',
+            busEquipmentId: document.getElementById('lbl_equipId')?.textContent || '--',
+            assessmentDate: document.getElementById('lbl_date')?.textContent || '--',
+            protectiveDevice: document.getElementById('lbl_device')?.textContent || '--'
+        }, (window.IMAGES_DATA && window.IMAGES_DATA.shock) ? window.IMAGES_DATA.shock : null);
+            if (pdfBytes) {
             addedArcFlashReports.push(pdfBytes);
             alert('Reporte de Arc Flash añadido con éxito. Se incluirá al final del PDF consolidado al hacer clic en "Descargar".');
             
@@ -706,6 +733,75 @@ if (btnAppendArcFlashToPdf) {
 const btnExportArcDocx = document.getElementById('btnExportArcDocx');
 if (btnExportArcDocx) {
     btnExportArcDocx.addEventListener('click', exportLabelToDocx);
+}
+
+// Export label to PDF button (downloads individual PDF report)
+const btnExportArcPdf = document.getElementById('btnExportArcPdf');
+if (btnExportArcPdf) {
+    btnExportArcPdf.addEventListener('click', async () => {
+        const originalContent = btnExportArcPdf.innerHTML;
+        btnExportArcPdf.disabled = true;
+        btnExportArcPdf.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Exportando...`;
+        if (window.lucide) window.lucide.createIcons();
+        
+        // Recopilar datos de la UI
+        const inputs = {
+            systemVoltage: document.getElementById('af_voltage')?.value || '--',
+            upstreamBreaker: document.getElementById('af_breaker')?.value || '--',
+            shortCircuit: document.getElementById('af_isc')?.value || '--',
+            energyStorage: document.getElementById('af_ecap')?.value || '--',
+            openingTime: document.getElementById('af_time')?.value || '--',
+            workingDistance: (parseFloat(document.getElementById('af_voltage')?.value) <= 600 ? '455 mm (18 in)' : '910 mm (36 in)'),
+            powerForArc: (() => {
+                const v = parseFloat(document.getElementById('af_voltage')?.value) || 0;
+                const i = parseFloat(document.getElementById('af_breaker')?.value) || 0;
+                return ((v * Math.sqrt(3) * i) / 1000).toFixed(1);
+            })(),
+            incidentEnergy: document.getElementById('lbl_energy')?.textContent.replace(' cal/cm²', '').trim() || '--',
+            arcFlashApproach: document.getElementById('lbl_arcBoundary')?.textContent || '--',
+            limitsApproach: '--', // No disponible en la UI actual
+            restrictedApproach: '--', // No disponible en la UI actual
+            exposedMovable: '--', // No disponible en la UI actual
+            arcFlashBoundary: document.getElementById('lbl_arcBoundary')?.textContent || '--',
+            glove: document.getElementById('lbl_gloves')?.textContent || '--',
+            requiredPPE: document.getElementById('lbl_ppe')?.textContent || '--',
+            footwear: document.getElementById('lbl_footwear')?.textContent || '--',
+            shockHazard: document.getElementById('lbl_shockV')?.textContent || '--',
+            limitedApproach: document.getElementById('lbl_limited')?.textContent || '--',
+            restrictedApproach2: document.getElementById('lbl_restricted')?.textContent || '--',
+            busEquipmentId: document.getElementById('lbl_equipId')?.textContent || '--',
+            assessmentDate: document.getElementById('lbl_date')?.textContent || '--',
+            protectiveDevice: document.getElementById('lbl_device')?.textContent || '--'
+        };
+        
+        // Imagen de EPP (si está disponible)
+        const eppImageBase64 = (window.IMAGES_DATA && window.IMAGES_DATA.shock) ? window.IMAGES_DATA.shock : null;
+        
+        console.log('Calling populateTemplate with inputs', inputs);
+        const pdfBytes = await window.pdfTemplateHelper.populateTemplate(inputs, eppImageBase64);
+        console.log('populateTemplate returned', pdfBytes ? pdfBytes.length : 'null');
+        try {
+            if (!pdfBytes) throw new Error('No se recibió bytes del PDF');
+            const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            const equipId = document.getElementById('lbl_equipId')?.textContent || 'report';
+            const cleanEquipId = equipId.replace(/[^a-zA-Z0-9]/g, '_') || 'report';
+            link.download = `Anexo_Calculadora_Arc_Flash_${cleanEquipId}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error('Error generando PDF con plantilla:', err);
+            alert('Error al generar el PDF: ' + err.message);
+        }
+        
+        btnExportArcPdf.disabled = false;
+        btnExportArcPdf.innerHTML = originalContent;
+        if (window.lucide) window.lucide.createIcons();
+    });
 }
 
 // Helper to extract base64 data from a data URI
@@ -800,9 +896,20 @@ async function generateArcFlashPDFBytes() {
         doc.setFont('helvetica', 'italic');
         doc.text('According to NFPA70E: Table 130.4(E)(a)', 15, headingY + 17);
 
-        // TABLE 2: Shock Boundaries
+        // EPP (PPE) Image on the left side
+        const eppImgData = window.IMAGES_DATA ? window.IMAGES_DATA[catLetter] : null;
+        const eppImgW = 35;
+        const eppImgH = 100;
+        if (eppImgData) {
+            try {
+                doc.addImage(getBase64Data(eppImgData), 'PNG', 15, headingY + 22, eppImgW, eppImgH);
+            } catch(e) { console.warn('EPP img add failed in PDF:', e); }
+        }
+
+        // TABLE 2: Shock Boundaries (placed on the right side of the EPP image)
         doc.autoTable({
             startY: headingY + 22,
+            margin: { left: 60 },
             theme: 'grid',
             headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
             head: [['Shock Protection Approach Boundaries and Arc Flash Boundary', '', '']],
@@ -816,14 +923,30 @@ async function generateArcFlashPDFBytes() {
         const shockImgData = window.IMAGES_DATA ? window.IMAGES_DATA['shock'] : null;
         if (shockImgData) {
             try {
-                const imgW = 150;
+                const imgW = 141; // 216 - 60 - 15 = 141mm
                 const imgH = imgW * (585 / 1201);
-                doc.addImage(getBase64Data(shockImgData), 'PNG', 15, doc.lastAutoTable.finalY + 5, imgW, imgH);
+                doc.addImage(getBase64Data(shockImgData), 'PNG', 60, doc.lastAutoTable.finalY + 5, imgW, imgH);
+                
+                // Set the dummy table below both the EPP image and the diagram
+                const nextY = Math.max(headingY + 22 + eppImgH, doc.lastAutoTable.finalY + imgH + 10);
                 doc.autoTable({
-                    startY: doc.lastAutoTable.finalY + imgH + 10,
+                    startY: nextY,
                     body: []
-                }); // dummy to advance Y
-            } catch(e) { console.warn('Shock img add failed'); }
+                });
+            } catch(e) {
+                console.warn('Shock img add failed');
+                const nextY = Math.max(headingY + 22 + eppImgH, doc.lastAutoTable.finalY + 10);
+                doc.autoTable({
+                    startY: nextY,
+                    body: []
+                });
+            }
+        } else {
+            const nextY = Math.max(headingY + 22 + eppImgH, doc.lastAutoTable.finalY + 10);
+            doc.autoTable({
+                startY: nextY,
+                body: []
+            });
         }
 
         // TABLE 3: WARNING LABEL (The Warning Label styled like Word)
@@ -858,20 +981,7 @@ async function generateArcFlashPDFBytes() {
             }
         });
 
-        const eppImgData = window.IMAGES_DATA ? window.IMAGES_DATA[catLetter] : null;
-        if (eppImgData) {
-            try {
-                // Add PPE image below the table or on next page if no space
-                let finalY = doc.lastAutoTable.finalY + 10;
-                if (finalY + 100 > 260) {
-                    doc.addPage();
-                    finalY = 20;
-                }
-                const imgMaxW = 35;
-                const imgMaxH = 100;
-                doc.addImage(getBase64Data(eppImgData), 'PNG', (216 - imgMaxW) / 2, finalY, imgMaxW, imgMaxH);
-            } catch(e) { console.warn('EPP img add failed'); }
-        }
+        // EPP image has been placed side-by-side with Table 2 above.
 
         return doc.output('arraybuffer');
     } catch(err) {
@@ -1034,8 +1144,8 @@ async function exportLabelToDocx() {
 
         // 2. Replace (imagen PPE) placeholder with the Drawing XML
         if (rIdPPE) {
-            const cx = 1260000;
-            const cy = 3600000;
+            const cx = 1008000; // 2.8 cm (reduced proportionally to decrease vertical space)
+            const cy = 2880000; // 8.0 cm (reduced from 10.0 cm / 3600000)
             const drawingXml = `</w:t></w:r><w:r><w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
   <wp:inline distT="0" distB="0" distL="0" distR="0">
     <wp:extent cx="${cx}" cy="${cy}"/>
@@ -1560,13 +1670,21 @@ function createSymbolAt(type, left, top) {
         iconGroup = new fabric.Group([lineIn, pivot, lineOut1, lineOut2, arm1, arm2], { left, top });
     }
     else if (type === 'aterrizaje_temporal') {
-        defaultText = 'Tierra Temp.';
+        defaultText = 'Aterrizaje Temporal';
         const line = new fabric.Line([20, 10, 20, 30], { fill: '#d97706', stroke: '#d97706', strokeWidth: 3 });
         const p1 = new fabric.Line([0, 30, 40, 30], { fill: '#d97706', stroke: '#d97706', strokeWidth: 3 });
         const p2 = new fabric.Line([8, 38, 32, 38], { fill: '#d97706', stroke: '#d97706', strokeWidth: 3 });
         const p3 = new fabric.Line([16, 46, 24, 46], { fill: '#d97706', stroke: '#d97706', strokeWidth: 3 });
         const hook = new fabric.Path('M 15 10 A 5 5 0 0 1 25 10 L 25 5', { fill: 'transparent', stroke: '#d97706', strokeWidth: 3 });
         iconGroup = new fabric.Group([line, p1, p2, p3, hook], { left, top });
+    }
+    else if (type === 'maniobras') {
+        defaultText = 'Maniobras';
+        const line1 = new fabric.Line([0, 20, 15, 20], { stroke: '#3b82f6', strokeWidth: 3 });
+        const line2 = new fabric.Line([35, 20, 50, 20], { stroke: '#3b82f6', strokeWidth: 3 });
+        const arm = new fabric.Line([15, 20, 30, 5], { stroke: '#3b82f6', strokeWidth: 3 });
+        const perpline = new fabric.Line([27, 2, 33, 8], { stroke: '#3b82f6', strokeWidth: 3 });
+        iconGroup = new fabric.Group([line1, line2, arm, perpline], { left, top });
     }
 
     if (iconGroup) {
@@ -2138,31 +2256,7 @@ canvas.on('mouse:move', function (e) {
     }
 });
 
-// --- Tabs Logic ---
-const tabPrincipales = document.getElementById('tabPrincipales');
-const tabOtros = document.getElementById('tabOtros');
-const gridPrincipales = document.getElementById('gridPrincipales');
-const gridOtros = document.getElementById('gridOtros');
-
-if (tabPrincipales && tabOtros) {
-    tabPrincipales.addEventListener('click', () => {
-        gridPrincipales.classList.remove('hidden');
-        gridOtros.classList.add('hidden');
-        tabPrincipales.classList.add('border-abbred', 'text-abbred');
-        tabPrincipales.classList.remove('border-transparent', 'text-gray-500');
-        tabOtros.classList.remove('border-abbred', 'text-abbred');
-        tabOtros.classList.add('border-transparent', 'text-gray-500');
-    });
-
-    tabOtros.addEventListener('click', () => {
-        gridOtros.classList.remove('hidden');
-        gridPrincipales.classList.add('hidden');
-        tabOtros.classList.add('border-abbred', 'text-abbred');
-        tabOtros.classList.remove('border-transparent', 'text-gray-500');
-        tabPrincipales.classList.remove('border-abbred', 'text-abbred');
-        tabPrincipales.classList.add('border-transparent', 'text-gray-500');
-    });
-}
+// --- Tab logic removed as tabs were simplified to a single clean grid ---
 
 // --- Auto-load HSE Documents from local workspace folder ---
 async function autoLoadHseDocuments() {
