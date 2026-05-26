@@ -2167,10 +2167,10 @@ if (tabPrincipales && tabOtros) {
 // --- Auto-load HSE Documents from local workspace folder ---
 async function autoLoadHseDocuments() {
     const docs = [
-        { path: 'Documentos HSE/06. PTW Electrical Safety.pdf', bufferName: 'hsePtwBuffer', statusId: 'hsePtwStatus', nameId: 'hsePtwFileName', displayName: '06. PTW Electrical Safety.pdf' },
-        { path: 'Documentos HSE/01. ABRA.pdf', bufferName: 'hseAbraBuffer', statusId: 'hseAbraStatus', nameId: 'hseAbraFileName', displayName: '01. ABRA.pdf' },
-        { path: 'Documentos HSE/04 Pare Tome 5.pdf', bufferName: 'hsePt5Buffer', statusId: 'hsePt5Status', nameId: 'hsePt5FileName', displayName: '04 Pare Tome 5.pdf' },
-        { path: 'Documentos HSE/05. Formato de Capacitación.pdf', bufferName: 'hseReunionesBuffer', statusId: 'hseReunionesStatus', nameId: 'hseReunionesFileName', displayName: '05. Formato de Capacitación.pdf' }
+        { path: '06. PTW Electrical Safety.pdf', bufferName: 'hsePtwBuffer', statusId: 'hsePtwStatus', nameId: 'hsePtwFileName', displayName: '06. PTW Electrical Safety.pdf' },
+        { path: '01. ABRA.pdf', bufferName: 'hseAbraBuffer', statusId: 'hseAbraStatus', nameId: 'hseAbraFileName', displayName: '01. ABRA.pdf' },
+        { path: '04 Pare Tome 5.pdf', bufferName: 'hsePt5Buffer', statusId: 'hsePt5Status', nameId: 'hsePt5FileName', displayName: '04 Pare Tome 5.pdf' },
+        { path: '05. Formato de Capacitación.pdf', bufferName: 'hseReunionesBuffer', statusId: 'hseReunionesStatus', nameId: 'hseReunionesFileName', displayName: '05. Formato de Capacitación.pdf' }
     ];
 
     for (const doc of docs) {
