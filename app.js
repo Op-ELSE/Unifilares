@@ -1,4 +1,10 @@
-// app.js
+// Ensure IMAGES_DATA is attached to window even if declared with const in imagesData.js
+if (typeof IMAGES_DATA !== 'undefined') {
+    window.IMAGES_DATA = IMAGES_DATA;
+}
+
+// Base64 of the original ABB logo
+window.ABB_LOGO_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAQgAAABjCAYAAABnsp7SAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAAFxEAABcRAcom8z8AABObSURBVHhe7V19tGVlWX8g8X6cvc8+d8aJSAiYRhJFFoZfKN+klUgr1ApI4w9BijTSIYVIVrnCZSEIraGUpBa2IowGy1IyllILnZYgDgiCiXwNzjBpE8xM83HvOWeffs+zn3PnzLl7Zs7Z+333fs/e72+t37ozd+37Pp/vb7/7mzw8PDw8PDw8qoMezZ7QpsZZMQWnHYhtmjozpvD1Ma2a4r+N6fCZBfl944y07YfJdmDvRDE8IYhp+ogYfnOcRZHt9WhqpboAH5rL+Pc9apw+lM/Tk+3DN85T63j8boX+iVNgv4rOofb0seoC7aKpVexDP3dLGZ6En6/oUdTSP/FoU/PNXQq39qjZG5Vdam6Mae4I/nXf8dSXp22ybUQ9/82SPaFocmAB0qHkV+50ejy1ynoJPqguc57elb5cQAsJ1+V9sdz/+/Vnwhg4FH8E4czpEqYA/55eRww6Fa9UFFqk1+/OhS1EMPzeDXwM/wzkE39ffGdYOmKQHoalu6metafEsSJG4UtbsRndmKvymMggavSt9sXW2jmqIPmvUicmABAIK5kv9PjsUXOU/M6dYEF4uz07YbJfvbJItN8CvVah5yf26PgJTpc4YAf55WRQwjEHeoC+3DjaD4M57D1OHL4z/h5akwU6nDVxw6aeSkC3zRa0voUgXhqUCDQfN30bfdFHiP623uIXiSOOA4IxBXj5cgERSA+oS6wQLwVeY7Tt90f9zQ7/v4+7EXfwzsGHbYwIJZfKyOHEIi/VxfYB+wMs/jQz2HEvf+VDkW/okNWG2i6c8ZPmAmB4ERHO3cPHB+6jMkWiEEuNjmW0I3jdOhCMNkCMUgR2i54E+9gdehqAk335fETZkYgkkSHq8URx1EdgehTmnwzDjneq8NbR3UEok+ZB0/zYYcOXy30aOooJGzj+AkzJxBYRTwuzjiO6gkEM4kHtfwEDjkOVjPWUD2BYMpYL6A2v6QmqgMk6+psyTK5gmhuw1L3THHIYVRTIPps9doUfhoi8WNqygoQSwUFIiHqsh31OUfNTD74bDYm+bpsyTIlEEwZ69PilMOotkAkhFB/QE1ZQZUFQmv1fGUONxYofGN6oKPQrEDgb78PHi2OOYrqC4TU4b8hEq9Sc8ZRbYFgyrxADpur1NzkoitLyqyJMikQTG7O4B3imKOowwpC6/qwrXslqi8QTOnlW4s4p2MNcP7FaIRnsyfKvEBgvHvLuDY/KuohEEyZUL+rJo2iHgIh5yM6fDu3mpw8IICLwPm04EajaYGQu/224eficweuoU4CgdpuiIi";
 
 // Initialize Lucide Icons
 function initIcons() {
@@ -21,11 +27,24 @@ const btnDelete = document.getElementById('btnDelete');
 // --- Global State ---
 let petsFileBuffer = null;
 let ppePdfFileBuffer = null;
+let addedArcFlashReports = [];
+let hsePtwBuffer = null;
+let hseAbraBuffer = null;
+let hsePt5Buffer = null;
+let hseReunionesBuffer = null;
 
 if (fileUpload) {
     // Click is handled by native onclick in index.html to prevent blocking
     fileUpload.addEventListener('change', (e) => {
-        if (e.target.files.length) handleFile(e.target.files[0]);
+        console.log('📂 Archivo seleccionado:', e.target.files[0]?.name);
+        if (e.target.files.length) {
+            try {
+                handleFile(e.target.files[0]);
+            } catch (err) {
+                console.error('Error handling file:', err);
+                alert('Ocurrió un error al cargar el archivo.');
+            }
+        }
     });
 }
 
@@ -80,6 +99,40 @@ if (btnRemovePpePdf) {
     });
 }
 
+// --- HSE Document Uploads ---
+function setupHseUpload(inputId, statusId, nameId, removeBtnId, bufferName) {
+    const input = document.getElementById(inputId);
+    if (input) {
+        input.addEventListener('change', async (e) => {
+            if (e.target.files.length) {
+                const file = e.target.files[0];
+                window[bufferName] = await file.arrayBuffer();
+                const status = document.getElementById(statusId);
+                const nameEl = document.getElementById(nameId);
+                if (status && nameEl) {
+                    status.classList.remove('hidden');
+                    nameEl.textContent = file.name;
+                }
+                if (window.lucide) window.lucide.createIcons();
+            }
+        });
+    }
+    const removeBtn = document.getElementById(removeBtnId);
+    if (removeBtn) {
+        removeBtn.addEventListener('click', () => {
+            window[bufferName] = null;
+            if (input) input.value = '';
+            const status = document.getElementById(statusId);
+            if (status) status.classList.add('hidden');
+        });
+    }
+}
+
+setupHseUpload('hsePtwUpload', 'hsePtwStatus', 'hsePtwFileName', 'btnRemoveHsePtw', 'hsePtwBuffer');
+setupHseUpload('hseAbraUpload', 'hseAbraStatus', 'hseAbraFileName', 'btnRemoveHseAbra', 'hseAbraBuffer');
+setupHseUpload('hsePt5Upload', 'hsePt5Status', 'hsePt5FileName', 'btnRemoveHsePt5', 'hsePt5Buffer');
+setupHseUpload('hseReunionesUpload', 'hseReunionesStatus', 'hseReunionesFileName', 'btnRemoveHseReuniones', 'hseReunionesBuffer');
+
 // Initialize Fabric Canvas
 const canvas = new fabric.Canvas('fabricCanvas', {
     selection: true,
@@ -96,6 +149,7 @@ const canvas = new fabric.Canvas('fabricCanvas', {
 canvas.getElement().style.imageRendering = 'pixelated';
 canvas.getElement().style.imageRendering = 'crisp-edges';
 canvas.getElement().style.imageRendering = '-webkit-optimize-contrast';
+const canvasTooltip = document.getElementById('canvasTooltip');
 
 function resizeCanvas() {
     canvas.setDimensions({
@@ -258,9 +312,793 @@ fabric.Object.prototype.set({
     cornerStrokeColor: '#FF000F',
     borderColor: '#FF000F',
     cornerSize: 10,
-    padding: 5,
-    cornerStyle: 'circle'
 });
+// ---------- Cálculo Arc Flash ----------
+class CalculationEngine {
+    static parseInputs() {
+        const getVal = (id) => parseFloat(document.getElementById(id).value) || 0;
+        const getText = (id) => document.getElementById(id).value.trim();
+        const getToggle = (group) => {
+            const btn = document.querySelector(`button[data-group="${group}"].active-toggle`);
+            return btn ? btn.dataset.val : null;
+        };
+        return {
+            voltage: getVal('af_voltage'),            // V (voltios)
+            breakerCurrent: getVal('af_breaker'),      // A
+            isc: getVal('af_isc'),                    // kA
+            eCap: getVal('af_ecap'),                  // kJ
+            time: getVal('af_time'),                  // s
+            config: getToggle('config'),              // "OpenAir" o "Enclosed"
+            acdc: getToggle('acdc'),                  // "AC" o "DC"
+            indoor: getToggle('indoor'),              // "Indoor" o "Outdoor"
+            working: getToggle('working'),            // "Isolated" o "Live"
+            equipId: getText('af_equipId'),
+            device: getText('af_device'),
+            date: document.getElementById('af_date').value
+        };
+    }
+
+    static calculateArcFlash(params) {
+        const V = params.voltage;
+        const I_breaker = params.breakerCurrent;
+        const I_sc = params.isc;
+        const t = params.time;
+        const E_cap = params.eCap;
+        const isAC = params.acdc !== 'DC'; // default to AC if toggle missing
+        const isOpenAir = params.config !== 'Enclosed'; // default to Open Air if toggle missing
+        const isLive = params.working === 'Live';
+
+        const warnings = [];
+
+        // S10: Exceeded Limits
+        if (V > 36000 || I_breaker > 6300 || I_sc > 100 || E_cap > 300) {
+            warnings.push(" Not compatible or exceeding the limits of the Calculator.");
+        }
+
+        // S11: DC Boundary
+        if (V > 1000 && !isAC) {
+            warnings.push(" DC Calculation is only available in LV (Up to 1kV).");
+        }
+
+        // S12: Enclosed Box Boundary
+        if (V > 1000 && !isOpenAir) {
+            warnings.push("Enclosed box Calculation is only available in LV (Up to 1kV).");
+        }
+
+        // S13: Live Working Boundary
+        if (V > 1000 && isLive) {
+            warnings.push(" Live Working is only allowed in LV (Up to 1kV).");
+        }
+
+        if (warnings.length > 0) {
+            return {
+                incidentEnergy: '--',
+                arcBoundary: '--',
+                ppeCategory: '--',
+                ppeDesc: 'Calculation not applicable.',
+                gloveClass: '--',
+                footwear: '--',
+                limited: '--',
+                limitedMovable: '--',
+                restricted: '--',
+                shockV: `${V} V${isAC ? 'AC' : 'DC'}`,
+                warnings: warnings,
+                params
+            };
+        }
+
+        // 1. Working Distance (D) in mm
+        const D = V <= 600 ? 455 : 910;
+        const D_inches = D / 25.4;
+
+        // 2. Calculate Incident Energy (E_inc)
+        let E_inc = 0;
+        if (isAC) {
+            if (isOpenAir) {
+                if (V <= 600) {
+                    // F25
+                    const F25 = 5271 * Math.pow(D_inches, -1.9593) * t * (0.0016 * Math.pow(I_sc, 2) - 0.0076 * I_sc + 0.8938);
+                    if (I_sc <= 1) {
+                        E_inc = F25 * I_sc;
+                    } else {
+                        E_inc = F25;
+                    }
+                } else {
+                    // I26 (V > 600)
+                    E_inc = 793 * Math.pow(D_inches, -2) * (V / 1000) * I_sc * t;
+                }
+            } else {
+                // Enclosed Box (only valid typically for V <= 1000V)
+                const F36 = 1038 * Math.pow(D_inches, -1.4738) * t * (0.0093 * Math.pow(I_sc, 2) - 0.3453 * I_sc + 5.9675);
+                if (I_sc >= 22) {
+                    E_inc = F36;
+                } else {
+                    E_inc = F36 * (I_sc / 22);
+                }
+            }
+        } else {
+            // DC
+            const F46 = (0.01 * V * ((I_sc * 1000) / 2) * t) / (D / 10);
+            if (I_sc >= 22) {
+                E_inc = F46;
+            } else {
+                E_inc = F46 * (I_sc / 22);
+            }
+        }
+
+        // S14: Incident Energy Limit
+        if (E_inc > 40) {
+            warnings.push(" Local operation over 40 cal/cm2 is not allowed. A different alternative must be considered.");
+            return {
+                incidentEnergy: '--',
+                arcBoundary: '--',
+                ppeCategory: '--',
+                ppeDesc: 'Calculation not applicable.',
+                gloveClass: '--',
+                footwear: '--',
+                limited: '--',
+                limitedMovable: '--',
+                restricted: '--',
+                shockV: `${V} V${isAC ? 'AC' : 'DC'}`,
+                warnings: warnings,
+                params
+            };
+        }
+
+        // 3. PPE Category Logic
+        let ppeCategory = '--';
+        let gloveClass = '--';
+        let footwear = '--';
+        let ppeDesc = '--';
+
+        // Penalty: if any parameter exceeds absolute limits, no PPE is assignable
+        const penalized = (V > 36000 || I_breaker > 6500 || I_sc > 150 || E_cap > 300);
+
+        if (!penalized) {
+            // Evaluate category from most restrictive (A) to least (F)
+            // Each category has hard upper bounds on ALL parameters simultaneously
+            if (V <= 30 && I_breaker <= 16 && I_sc <= 1 && E_inc <= 8 && E_cap === 0) {
+                ppeCategory = 'A';
+            } else if (V <= 480 && I_breaker <= 16 && I_sc <= 1 && E_inc <= 8 && E_cap <= 10) {
+                ppeCategory = 'B';
+            } else if (V <= 480 && I_breaker <= 63 && I_sc <= 7 && E_inc <= 8 && E_cap <= 10) {
+                ppeCategory = 'C';
+            } else if (V <= 1000 && I_breaker <= 200 && I_sc <= 15 && E_inc <= 25 && E_cap <= 150) {
+                ppeCategory = 'D';
+            } else if (V <= 7000 && E_inc <= 30 && E_cap <= 300) {
+                ppeCategory = 'E';
+            } else if (V <= 36000 && E_inc <= 40 && E_cap <= 300) {
+                ppeCategory = 'F';
+            }
+        }
+
+        // Set descriptions based on category
+        // Indoor = always Electrical Hazard (EH) footwear for ALL categories (A-F)
+        // Outdoor = category-specific boots per Excel workbook logic
+        const isIndoor = params.indoor !== 'Outdoor'; // default to Indoor when toggle not set
+
+        switch(ppeCategory) {
+            case 'A':
+                ppeDesc = "ABB's minimum arc flash workwear ATPV >= 8 Cal/cm2 Cat. 2 (NFPA 70E) + Dielectric Goggles";
+                gloveClass = "Arc Grip Glove >= 8 Cal/cm2";
+                footwear = 'Electrical Hazard Footwear "EH"';
+                break;
+            case 'B':
+                ppeDesc = "One layer ATPV >= 8 Cal/cm2 Cat. 2 (NFPA 70E) + Dielectric Goggles or CAT 2 Face Shield";
+                gloveClass = "Class 00 >= 500V + CAT 2 Leather";
+                footwear = isIndoor ? 'Electrical Hazard Footwear "EH"' : 'Dielectric Safety Boots - Class 0 (Outdoor)';
+                break;
+            case 'C':
+                ppeDesc = "One layer ATPV >= 8 Cal/cm2 Cat. 2 (NFPA 70E) + Ear Prot + CAT 2 Face Shield / Balaclava";
+                gloveClass = "Class 00 >= 500V + CAT 2 Leather";
+                footwear = isIndoor ? 'Electrical Hazard Footwear "EH"' : 'Dielectric Safety Boots - Class 0 (Outdoor)';
+                break;
+            case 'D':
+                ppeDesc = "One Layer / Multi-layer ATPV >= 25 Cal/cm2 or 2 x ATPV >= 8 Cal/cm2 + Ear Prot. + CAT 3 Complete Hood";
+                gloveClass = "Class 0 >= 1000V + CAT 3 Leather";
+                footwear = isIndoor ? 'Electrical Hazard Footwear "EH"' : 'Dielectric Safety Boots - Class 0 (Outdoor)';
+                break;
+            case 'E':
+                ppeDesc = "Multi-layer mandatory ATPV >= 8 Cal/cm2 and ATPV >= 25 Cal/cm2 + Ear Prot. + CAT 3 Complete Hood";
+                gloveClass = "Class 1 >= 7.5kV + CAT 3 Leather";
+                footwear = isIndoor ? 'Electrical Hazard Footwear "EH"' : 'Dielectric Safety Boots - Class 2 (Outdoor)';
+                break;
+            case 'F':
+                ppeDesc = "Multi-layer mandatory ATPV >= 8 Cal/cm2 and ATPV >= 40 Cal/cm2 Full Suite + Ear Prot. + CAT 4 Complete Hood";
+                gloveClass = "Class 4 + Arc rated >= 40 Cal/cm2";
+                footwear = isIndoor ? 'Electrical Hazard Footwear "EH"' : 'EH Safety Shoe + Overboot Class 3 (Outdoor)';
+                break;
+            default:
+                ppeDesc = "No valid PPE category found (Limits exceeded).";
+                break;
+        }
+
+        // 4. Arc Flash Boundary
+        let arcBoundary = '--';
+        if (V >= 50 && I_breaker > 0 && t > 0) {
+            const mva = (1.732 * V * I_breaker) / 1000000;
+            const arcBoundaryMeters = Math.sqrt(53 * mva * t) / 3.28084;
+            arcBoundary = arcBoundaryMeters.toFixed(2) + ' m';
+        }
+
+        // 5. Shock Boundaries
+        let limited = '--';
+        let limitedMovable = '--';
+        let restricted = '--';
+
+        if (isAC) {
+            if (V >= 50 && V <= 150) { limited = '1.0 m'; limitedMovable = '3.0 m'; restricted = '0.3 m'; }
+            else if (V > 150 && V <= 750) { limited = '1.0 m'; limitedMovable = '3.0 m'; restricted = '0.3 m'; }
+            else if (V > 750 && V <= 15000) { limited = '1.5 m'; limitedMovable = '3.0 m'; restricted = '0.7 m'; }
+            else if (V > 15000 && V <= 36000) { limited = '1.8 m'; limitedMovable = '3.0 m'; restricted = '0.8 m'; }
+            else if (V > 36000 && V <= 40000) { limited = '2.5 m'; limitedMovable = '3.0 m'; restricted = '0.8 m'; }
+        } else {
+            if (V >= 50 && V <= 300) { limited = '3.0 m'; limitedMovable = '3.0 m'; restricted = '0.3 m'; }
+            else if (V > 300 && V <= 1000) { limited = '3.0 m'; limitedMovable = '3.0 m'; restricted = '0.3 m'; }
+        }
+
+        return {
+            incidentEnergy: E_inc.toFixed(2),
+            arcBoundary,
+            ppeCategory,
+            ppeDesc,
+            gloveClass,
+            footwear,
+            limited,
+            limitedMovable,
+            restricted,
+            shockV: `${V} V${isAC ? 'AC' : 'DC'}`,
+            warnings: [],
+            params
+        };
+    }
+
+    static updateUI(results) {
+        document.getElementById('lbl_energy').textContent = results.incidentEnergy + ' cal/cm²';
+        document.getElementById('lbl_arcBoundary').textContent = results.arcBoundary;
+        
+        document.getElementById('lbl_ppe').textContent = results.ppeDesc;
+        document.getElementById('lbl_gloves').textContent = results.gloveClass;
+        document.getElementById('lbl_footwear').textContent = results.footwear;
+
+        document.getElementById('lbl_shockV').textContent = results.shockV;
+        document.getElementById('lbl_limited').textContent = results.limited;
+        const mov = document.getElementById('lbl_limitedMovable');
+        if (mov) mov.textContent = results.limitedMovable;
+        document.getElementById('lbl_restricted').textContent = results.restricted;
+
+        document.getElementById('lbl_equipId').textContent = results.params.equipId || '--';
+        document.getElementById('lbl_device').textContent = results.params.device || '--';
+        document.getElementById('lbl_date').textContent = results.params.date || '--';
+        
+        const catElem = document.getElementById('lbl_cat');
+        if (catElem) catElem.textContent = 'CAT ' + results.ppeCategory;
+    }
+}
+
+function calculateArcFlash() {
+    const inputs = CalculationEngine.parseInputs();
+    const results = CalculationEngine.calculateArcFlash(inputs);
+    
+    const warningsDiv = document.getElementById('af_warnings');
+    const warnText = document.getElementById('af_warnText');
+    
+    if (results.warnings && results.warnings.length > 0) {
+        if (warningsDiv && warnText) {
+            warnText.innerHTML = results.warnings.map(w => `• ${w}`).join('<br>');
+            warningsDiv.classList.remove('hidden');
+        }
+        
+        // Hide results panels and show placeholder
+        document.getElementById('af_placeholder').classList.remove('hidden');
+        document.getElementById('af_labelContainer').classList.add('hidden');
+        const banner = document.getElementById('af_energyBanner');
+        if (banner) banner.classList.add('hidden');
+        const catPanel = document.getElementById('af_categoryPanel');
+        if (catPanel) catPanel.classList.add('hidden');
+        
+        // Update labels to show empty/dashed state
+        CalculationEngine.updateUI(results);
+    } else {
+        if (warningsDiv) {
+            warningsDiv.classList.add('hidden');
+        }
+        
+        CalculationEngine.updateUI(results);
+        
+        const banner = document.getElementById('af_energyBanner');
+        if (banner) {
+            banner.classList.remove('hidden');
+            document.getElementById('af_energyValue').textContent = results.incidentEnergy + ' cal/cm²';
+            document.getElementById('af_arcBoundaryBanner').textContent = 'Boundary: ' + results.arcBoundary;
+            
+            // Set method description
+            const methodElem = document.getElementById('af_energyMethod');
+            if (methodElem) {
+                let method = "IEEE 1584 AC Open Air";
+                if (inputs.acdc === 'DC') method = "DC LV Method";
+                else if (inputs.config === 'Enclosed') method = "IEEE 1584 AC Enclosed Box";
+                methodElem.textContent = "Método: " + method;
+            }
+            
+            // Set working distance
+            const workDistElem = document.getElementById('af_workDist');
+            if (workDistElem) {
+                const D = inputs.voltage <= 600 ? "455 mm (18 in)" : "910 mm (36 in)";
+                workDistElem.textContent = D;
+            }
+        }
+        
+        document.getElementById('af_placeholder').classList.add('hidden');
+        document.getElementById('af_labelContainer').classList.remove('hidden');
+        
+        const catPanel = document.getElementById('af_categoryPanel');
+        if (catPanel) catPanel.classList.remove('hidden');
+    }
+}
+
+const btnOpenArcFlash = document.getElementById('btnOpenArcFlash');
+if (btnOpenArcFlash) {
+        btnOpenArcFlash.addEventListener('click', () => {
+            console.log('🔧 Botón Arc Flash pulsado');
+            const modal = document.getElementById('arcFlashModal');
+            if (modal) modal.classList.remove('hidden');
+        });
+}
+
+const btnCalcArcFlash = document.getElementById('btnCalcArcFlash');
+if (btnCalcArcFlash) {
+    btnCalcArcFlash.addEventListener('click', calculateArcFlash);
+}
+
+// Logic for custom toggle buttons (af-toggle)
+const afToggles = document.querySelectorAll('.af-toggle');
+afToggles.forEach(btn => {
+    btn.addEventListener('click', () => {
+        const group = btn.dataset.group;
+        // Deselect all buttons in the same group
+        document.querySelectorAll(`.af-toggle[data-group="${group}"]`).forEach(b => {
+            b.classList.remove('active-toggle', 'border-orange-500', 'bg-orange-500', 'text-white');
+            b.classList.add('border-gray-200', 'bg-white', 'text-gray-500');
+        });
+        // Select the clicked button
+        btn.classList.add('active-toggle', 'border-orange-500', 'bg-orange-500', 'text-white');
+        btn.classList.remove('border-gray-200', 'bg-white', 'text-gray-500');
+    });
+});
+
+const btnCloseArcFlashModal = document.getElementById('closeArcFlashModal');
+if (btnCloseArcFlashModal) {
+    btnCloseArcFlashModal.addEventListener('click', () => {
+        const modal = document.getElementById('arcFlashModal');
+        if (modal) modal.classList.add('hidden');
+    });
+}
+
+// Append Arc Flash report to consolidated PDF button
+const btnAppendArcFlashToPdf = document.getElementById('btnAppendArcFlashToPdf');
+if (btnAppendArcFlashToPdf) {
+    btnAppendArcFlashToPdf.addEventListener('click', async () => {
+        const originalContent = btnAppendArcFlashToPdf.innerHTML;
+        btnAppendArcFlashToPdf.disabled = true;
+        btnAppendArcFlashToPdf.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Añadiendo...`;
+        if (window.lucide) window.lucide.createIcons();
+
+        const pdfBytes = await generateArcFlashPDFBytes();
+        if (pdfBytes) {
+            addedArcFlashReports.push(pdfBytes);
+            alert('Reporte de Arc Flash añadido con éxito. Se incluirá al final del PDF consolidado al hacer clic en "Descargar".');
+            
+            // Close modal
+            const modal = document.getElementById('arcFlashModal');
+            if (modal) modal.classList.add('hidden');
+        } else {
+            alert('Error al generar el reporte.');
+        }
+
+        btnAppendArcFlashToPdf.disabled = false;
+        btnAppendArcFlashToPdf.innerHTML = originalContent;
+        if (window.lucide) window.lucide.createIcons();
+    });
+}
+
+// Export label to DOCX button
+const btnExportArcDocx = document.getElementById('btnExportArcDocx');
+if (btnExportArcDocx) {
+    btnExportArcDocx.addEventListener('click', exportLabelToDocx);
+}
+
+// Helper to extract base64 data from a data URI
+function getBase64Data(dataUri) {
+    if (!dataUri) return null;
+    if (dataUri.includes(',')) return dataUri.split(',')[1];
+    return dataUri;
+}
+
+
+
+async function generateArcFlashPDFBytes() {
+    try {
+        if (!window.jspdf) {
+            alert('La biblioteca jsPDF no está cargada.');
+            return null;
+        }
+
+        const { jsPDF } = window.jspdf;
+
+        // ---- Collect all calculated values from the UI ----
+        const energy      = document.getElementById('lbl_energy')?.textContent || '--';
+        const arcBoundary = document.getElementById('lbl_arcBoundary')?.textContent || '--';
+        const ppe         = document.getElementById('lbl_ppe')?.textContent || '--';
+        const gloves      = document.getElementById('lbl_gloves')?.textContent || '--';
+        const footwear    = document.getElementById('lbl_footwear')?.textContent || '--';
+        const shockV      = document.getElementById('lbl_shockV')?.textContent || '--';
+        const limited     = document.getElementById('lbl_limited')?.textContent || '--';
+        const restricted  = document.getElementById('lbl_restricted')?.textContent || '--';
+        const limitedMov  = document.getElementById('lbl_limitedMovable')?.textContent || '--';
+        const equipId     = document.getElementById('lbl_equipId')?.textContent || '--';
+        const device      = document.getElementById('lbl_device')?.textContent || '--';
+        const dateVal     = document.getElementById('lbl_date')?.textContent || '--';
+        const category    = document.getElementById('lbl_cat')?.textContent || '--';
+        const catLetter   = category.replace('CAT ', '').trim();
+
+        const voltage = document.getElementById('af_voltage')?.value || '--';
+        const breaker = document.getElementById('af_breaker')?.value || '--';
+        const isc     = document.getElementById('af_isc')?.value || '--';
+        const ecap    = document.getElementById('af_ecap')?.value || '--';
+        const time    = document.getElementById('af_time')?.value || '--';
+
+        const vNum = parseFloat(voltage) || 0;
+        const bNum = parseFloat(breaker) || 0;
+        const powerVal = ((vNum * Math.sqrt(3) * bNum) / 1000).toFixed(1);
+        const workingDistStr = vNum <= 600 ? "455mm (18 in)" : "910mm (36 in)";
+        const cleanEnergyStr = energy.replace(' cal/cm²', '').trim();
+
+        const doc = new jsPDF('p', 'mm', 'letter');
+        
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Anexo 01  System Information', 15, 20);
+        
+        // TABLE 1: System Information
+        doc.autoTable({
+            startY: 25,
+            theme: 'grid',
+            headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+            bodyStyles: { textColor: [0, 0, 0] },
+            head: [[{ content: 'System Information', colSpan: 4, styles: { halign: 'center' } }]],
+            body: [
+                ['System Voltage', voltage, 'V', ''],
+                ['Upstream Overcurrent Breaker (device)', breaker, 'A', ''],
+                ['Short Circuit Current (Isc)', parseFloat(isc).toFixed(1), 'kA', ''],
+                ['Energy Storage (e.g. Capacitors)', parseFloat(ecap).toFixed(1), 'kJ', ''],
+                ['Opening Time', parseFloat(time).toFixed(2), 'Sec', ''],
+                ['Working Distance (From the arc source)', workingDistStr, '(*)', ''],
+                ['Power - For Arc Flash prot. Boundaries', powerVal, 'kVA (*)', ''],
+                ['Incident Energy', cleanEnergyStr, 'cal/cm2', '']
+            ],
+            columnStyles: {
+                0: { cellWidth: 90 },
+                1: { cellWidth: 35, fontStyle: 'bold', halign: 'right' },
+                2: { cellWidth: 30 },
+                3: { cellWidth: 25 }
+            }
+        });
+
+        // Add section headings matching the Word document layout
+        const headingY = doc.lastAutoTable.finalY + 12;
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Análisis de seguridad eléctrica', 15, headingY);
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Frontera de protección de arco y choque eléctrico Distancias para instalación de barricada', 15, headingY + 6);
+        doc.text('durante verificación de Seven Steps y señalización perimetral', 15, headingY + 11);
+        
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'italic');
+        doc.text('According to NFPA70E: Table 130.4(E)(a)', 15, headingY + 17);
+
+        // TABLE 2: Shock Boundaries
+        doc.autoTable({
+            startY: headingY + 22,
+            theme: 'grid',
+            headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+            head: [['Shock Protection Approach Boundaries and Arc Flash Boundary', '', '']],
+            body: [
+                ['Arc Flash Boundary', 'Limited Approach Boundary', 'Restricted Approach Boundary'],
+                [arcBoundary, limited, restricted],
+                [limitedMov, '', '']
+            ]
+        });
+
+        const shockImgData = window.IMAGES_DATA ? window.IMAGES_DATA['shock'] : null;
+        if (shockImgData) {
+            try {
+                const imgW = 150;
+                const imgH = imgW * (585 / 1201);
+                doc.addImage(getBase64Data(shockImgData), 'PNG', 15, doc.lastAutoTable.finalY + 5, imgW, imgH);
+                doc.autoTable({
+                    startY: doc.lastAutoTable.finalY + imgH + 10,
+                    body: []
+                }); // dummy to advance Y
+            } catch(e) { console.warn('Shock img add failed'); }
+        }
+
+        // TABLE 3: WARNING LABEL (The Warning Label styled like Word)
+        const lblY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : 150;
+        if (lblY > 230) {
+            doc.addPage();
+        }
+        
+        doc.autoTable({
+            startY: doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : 20,
+            theme: 'grid',
+            headStyles: { fillColor: [237, 139, 0], textColor: [0, 0, 0], fontStyle: 'bold', fontSize: 16, halign: 'center' },
+            bodyStyles: { textColor: [0, 0, 0], fontSize: 10 },
+            head: [[{ content: '⚠ WARNING', colSpan: 4 }]],
+            body: [
+                [{ content: 'Arc Flash & Shock Hazard\nAppropriate PPE Required', colSpan: 4, styles: { halign: 'center', fontStyle: 'bold', fontSize: 14 } }],
+                [{ content: 'ARC FLASH PROTECTION BOUNDARY AND REQUIRED PPE ABB Electrical Safety Calculator V1.6a Jan. 2024', colSpan: 4, styles: { fillColor: [40, 40, 40], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' } }],
+                ['Arc Flash boundary:', arcBoundary, 'Glove Class/ CAT:', ': ' + gloves],
+                ['Required PPE:', ppe, 'Footwear:', ': ' + footwear],
+                [{ content: 'SHOCK HAZARD PROTECTION BOUNDARIES', colSpan: 4, styles: { fillColor: [40, 40, 40], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' } }],
+                ['Shock Hazard:', shockV, 'Limited Approach:', limited],
+                ['Bus/Equipment ID:', equipId, 'Restricted Approach:', restricted],
+                ['Protective Device (Upstream):', device, 'Assessment Date:', dateVal],
+                [{ content: 'THIS LABEL IS FOR TEMPORARY USE AND MUST BE REMOVED AFTER SERVICE IS COMPLETED', colSpan: 4, styles: { halign: 'center', fontStyle: 'italic', fontSize: 8, textColor: [120, 120, 120] } }],
+                [{ content: 'IMPORTANT: This label was generated using estimated values ​​and may be used in the absence of a formal arc flash risk assessment.', colSpan: 4, styles: { halign: 'center', fontSize: 8, textColor: [120, 120, 120] } }]
+            ],
+            columnStyles: {
+                0: { fontStyle: 'bold', cellWidth: 48 },
+                1: { textColor: [0, 0, 139], fontStyle: 'bold' },
+                2: { fontStyle: 'bold', cellWidth: 48 },
+                3: { textColor: [0, 0, 139], fontStyle: 'bold' }
+            }
+        });
+
+        const eppImgData = window.IMAGES_DATA ? window.IMAGES_DATA[catLetter] : null;
+        if (eppImgData) {
+            try {
+                // Add PPE image below the table or on next page if no space
+                let finalY = doc.lastAutoTable.finalY + 10;
+                if (finalY + 100 > 260) {
+                    doc.addPage();
+                    finalY = 20;
+                }
+                const imgMaxW = 35;
+                const imgMaxH = 100;
+                doc.addImage(getBase64Data(eppImgData), 'PNG', (216 - imgMaxW) / 2, finalY, imgMaxW, imgMaxH);
+            } catch(e) { console.warn('EPP img add failed'); }
+        }
+
+        return doc.output('arraybuffer');
+    } catch(err) {
+        console.error('Error generating PDF bytes:', err);
+        return null;
+    }
+}
+
+async function exportLabelToDocx() {
+    if (typeof JSZip === 'undefined') {
+        alert('La biblioteca JSZip no está cargada.');
+        return;
+    }
+    if (!window.DOCX_TEMPLATE_DATA) {
+        alert('La plantilla DOCX no está disponible.');
+        return;
+    }
+
+    try {
+        const energy      = document.getElementById('lbl_energy')?.textContent || '--';
+        const arcBoundary = document.getElementById('lbl_arcBoundary')?.textContent || '--';
+        const ppe         = document.getElementById('lbl_ppe')?.textContent || '--';
+        const gloves      = document.getElementById('lbl_gloves')?.textContent || '--';
+        const footwear    = document.getElementById('lbl_footwear')?.textContent || '--';
+        const shockV      = document.getElementById('lbl_shockV')?.textContent || '--';
+        const limited     = document.getElementById('lbl_limited')?.textContent || '--';
+        const restricted  = document.getElementById('lbl_restricted')?.textContent || '--';
+        const limitedMov  = document.getElementById('lbl_limitedMovable')?.textContent || '--';
+        const equipId     = document.getElementById('lbl_equipId')?.textContent || '--';
+        const device      = document.getElementById('lbl_device')?.textContent || '--';
+        const dateVal     = document.getElementById('lbl_date')?.textContent || '--';
+        const category    = document.getElementById('lbl_cat')?.textContent || '--';
+        const catLetter   = category.replace('CAT ', '').trim();
+
+        const voltage = document.getElementById('af_voltage')?.value || '--';
+        const breaker = document.getElementById('af_breaker')?.value || '--';
+        const isc     = document.getElementById('af_isc')?.value || '--';
+        const ecap    = document.getElementById('af_ecap')?.value || '--';
+        const time    = document.getElementById('af_time')?.value || '--';
+
+        const vNum = parseFloat(voltage) || 0;
+        const bNum = parseFloat(breaker) || 0;
+        const powerVal = ((vNum * Math.sqrt(3) * bNum) / 1000).toFixed(1);
+
+        const zip = await JSZip.loadAsync(window.DOCX_TEMPLATE_DATA, { base64: true });
+        const parser = new DOMParser();
+        const serializer = new XMLSerializer();
+
+        const eppImgData = window.IMAGES_DATA ? window.IMAGES_DATA[catLetter] : null;
+        let rIdPPE = null;
+        if (eppImgData) {
+            const base64Data = getBase64Data(eppImgData);
+            zip.file("word/media/ppe_image.png", base64Data, {base64: true});
+            
+            let relsXmlText = await zip.file("word/_rels/document.xml.rels").async("string");
+            const relsDoc = parser.parseFromString(relsXmlText, "application/xml");
+            let relationships = relsDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/package/2006/relationships", "Relationships")[0];
+            if (!relationships) {
+                relationships = relsDoc.getElementsByTagName("Relationships")[0];
+            }
+            if (relationships) {
+                rIdPPE = "rIdPPE" + Date.now();
+                const newRel = relsDoc.createElementNS("http://schemas.openxmlformats.org/package/2006/relationships", "Relationship");
+                newRel.setAttribute("Id", rIdPPE);
+                newRel.setAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image");
+                newRel.setAttribute("Target", "media/ppe_image.png");
+                relationships.appendChild(newRel);
+                zip.file("word/_rels/document.xml.rels", serializer.serializeToString(relsDoc));
+            }
+        }
+        
+        let docXmlText = await zip.file("word/document.xml").async("string");
+        const xmlDoc = parser.parseFromString(docXmlText, "application/xml");
+
+        function getElementsByTagNameNSOrLocal(element, localName) {
+            let list = element.getElementsByTagName('w:' + localName);
+            if (list.length === 0) list = element.getElementsByTagName(localName);
+            return Array.from(list);
+        }
+
+        // Simpler, safer cell replacement
+        function replaceCellText(cellNode, newText) {
+            if (!cellNode) return;
+            const pNodes = getElementsByTagNameNSOrLocal(cellNode, 'p');
+            if (pNodes.length === 0) return;
+            
+            const pNode = pNodes[0];
+            const rNodes = getElementsByTagNameNSOrLocal(pNode, 'r');
+            if (rNodes.length === 0) return;
+            
+            const firstR = rNodes[0];
+            const tNodes = getElementsByTagNameNSOrLocal(firstR, 't');
+            let targetT;
+            if (tNodes.length === 0) {
+                targetT = cellNode.ownerDocument.createElementNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'w:t');
+                firstR.appendChild(targetT);
+            } else {
+                targetT = tNodes[0];
+            }
+            
+            targetT.textContent = newText;
+            
+            for (let i = 1; i < rNodes.length; i++) {
+                pNode.removeChild(rNodes[i]);
+            }
+            for (let i = 1; i < pNodes.length; i++) {
+                cellNode.removeChild(pNodes[i]);
+            }
+        }
+
+        function getCell(table, rowIndex, colIndex) {
+            if (!table) return null;
+            const rows = getElementsByTagNameNSOrLocal(table, 'tr');
+            if (rowIndex >= rows.length) return null;
+            const row = rows[rowIndex];
+            const cells = getElementsByTagNameNSOrLocal(row, 'tc');
+            if (colIndex >= cells.length) return null;
+            return cells[colIndex];
+        }
+
+        const tables = getElementsByTagNameNSOrLocal(xmlDoc, 'tbl');
+        if (tables.length >= 3) {
+            // Table 0: System Information
+            replaceCellText(getCell(tables[0], 1, 4), voltage);
+            replaceCellText(getCell(tables[0], 2, 4), breaker);
+            replaceCellText(getCell(tables[0], 3, 4), parseFloat(isc).toFixed(1));
+            replaceCellText(getCell(tables[0], 4, 4), parseFloat(ecap).toFixed(1));
+            replaceCellText(getCell(tables[0], 5, 4), parseFloat(time).toFixed(2));
+            
+            const workingDistStr = vNum <= 600 ? "455mm (18 in)" : "910mm (36 in)";
+            replaceCellText(getCell(tables[0], 6, 4), workingDistStr);
+            replaceCellText(getCell(tables[0], 7, 4), powerVal);
+            
+            const cleanEnergyStr = energy.replace(' cal/cm²', '').trim();
+            replaceCellText(getCell(tables[0], 10, 4), cleanEnergyStr);
+
+            // Table 1: Shock boundaries
+            replaceCellText(getCell(tables[1], 2, 3), arcBoundary);
+            replaceCellText(getCell(tables[1], 2, 5), limited);
+            replaceCellText(getCell(tables[1], 2, 6), restricted);
+            replaceCellText(getCell(tables[1], 3, 5), limitedMov);
+
+            // Table 2: Warning Label (Etiqueta de Warning)
+            replaceCellText(getCell(tables[2], 4, 3), arcBoundary);
+            replaceCellText(getCell(tables[2], 4, 6), ': ' + gloves);
+            replaceCellText(getCell(tables[2], 5, 3), ppe);
+            replaceCellText(getCell(tables[2], 5, 6), ': ' + footwear);
+            replaceCellText(getCell(tables[2], 7, 3), shockV);
+            replaceCellText(getCell(tables[2], 8, 3), limited);
+            replaceCellText(getCell(tables[2], 8, 6), restricted);
+            replaceCellText(getCell(tables[2], 9, 3), equipId);
+            replaceCellText(getCell(tables[2], 9, 6), dateVal);
+            replaceCellText(getCell(tables[2], 10, 2), device);
+        }
+
+        let newXmlText = serializer.serializeToString(xmlDoc);
+
+        // 1. Fix yellow color: Replace FFFF00 (yellow) with 000000 (black) safely globally
+        newXmlText = newXmlText.replace(/w:val="FFFF00"/gi, 'w:val="000000"');
+
+        // 2. Replace (imagen PPE) placeholder with the Drawing XML
+        if (rIdPPE) {
+            const cx = 1260000;
+            const cy = 3600000;
+            const drawingXml = `</w:t></w:r><w:r><w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+  <wp:inline distT="0" distB="0" distL="0" distR="0">
+    <wp:extent cx="${cx}" cy="${cy}"/>
+    <wp:effectExtent l="0" t="0" r="0" b="0"/>
+    <wp:docPr id="2" name="Imagen PPE" descr="PPE Image"/>
+    <wp:cNvGraphicsFramePr>
+      <a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/>
+    </wp:cNvGraphicsFramePr>
+    <a:graphic>
+      <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+        <pic:pic>
+          <pic:nvPicPr>
+            <pic:cNvPr id="2" name="Imagen PPE"/>
+            <pic:cNvPicPr/>
+          </pic:nvPicPr>
+          <pic:blipFill>
+            <a:blip r:embed="${rIdPPE}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>
+            <a:stretch>
+              <a:fillRect/>
+            </a:stretch>
+          </pic:blipFill>
+          <pic:spPr>
+            <a:xfrm>
+              <a:off x="0" y="0"/>
+              <a:ext cx="${cx}" cy="${cy}"/>
+            </a:xfrm>
+            <a:prstGeom prst="rect">
+              <a:avLst/>
+            </a:prstGeom>
+          </pic:spPr>
+        </pic:pic>
+      </a:graphicData>
+    </a:graphic>
+  </wp:inline>
+</w:drawing></w:r><w:r><w:t>`;
+            newXmlText = newXmlText.replace(/\(imagen PPE\)/g, drawingXml);
+        } else {
+            newXmlText = newXmlText.replace(/\(imagen PPE\)/g, 'Imagen EPP no disponible');
+        }
+
+        zip.file("word/document.xml", newXmlText);
+
+        const blobContent = await zip.generateAsync({
+            type: "blob",
+            mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        });
+
+        const url = URL.createObjectURL(blobContent);
+        const link = document.createElement("a");
+        link.href = url;
+        const cleanEquipId = equipId.replace(/[^a-zA-Z0-9]/g, '_') || 'report';
+        link.download = `Anexo_Calculadora_Arc_Flash_${cleanEquipId}.docx`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+    } catch(e) {
+        console.error('Error generating DOCX:', e);
+        alert('Error al generar el reporte en formato Word: ' + e.message);
+    }
+}
+
 
 window.addEventListener('resize', () => {
     // Optionally resize fabric instance wrapper to fit container if needed, 
@@ -1010,16 +1848,7 @@ async function handlePDFExport(imageBuffer, docW, docH, useOverlay = false) {
         } catch (e) { console.error('Error consolidando PETS:', e); }
     }
 
-    // 2. PPE annex pages
-    if (ppePdfFileBuffer) {
-        try {
-            const ppeDoc   = await PDFDocument.load(ppePdfFileBuffer);
-            const ppePages = await pdfDoc.copyPages(ppeDoc, ppeDoc.getPageIndices());
-            ppePages.forEach(p => pdfDoc.addPage(p));
-        } catch (e) { console.error('Error consolidando PPE PDF:', e); }
-    }
-
-    // 3. Unifilar page — preserve the composite's aspect ratio so nothing
+    // 2. Unifilar page — preserve the composite's aspect ratio so nothing
     //    gets stretched. If the user cropped, docW/docH reflects the crop.
     const aspectRatio = docW / docH;
 
@@ -1064,6 +1893,47 @@ async function handlePDFExport(imageBuffer, docW, docH, useOverlay = false) {
     });
 
     await injectSummaryTable(pdfDoc);
+
+    // 3. EPPs (Ref. PPE PDF annex pages + Added Arc Flash reports)
+    if (ppePdfFileBuffer) {
+        try {
+            const ppeDoc   = await PDFDocument.load(ppePdfFileBuffer);
+            const ppePages = await pdfDoc.copyPages(ppeDoc, ppeDoc.getPageIndices());
+            ppePages.forEach(p => pdfDoc.addPage(p));
+        } catch (e) { console.error('Error consolidando PPE PDF:', e); }
+    }
+
+    if (addedArcFlashReports && addedArcFlashReports.length > 0) {
+        for (const arcFlashBytes of addedArcFlashReports) {
+            try {
+                const arcDoc = await PDFDocument.load(arcFlashBytes);
+                const arcPages = await pdfDoc.copyPages(arcDoc, arcDoc.getPageIndices());
+                arcPages.forEach(p => pdfDoc.addPage(p));
+            } catch (e) {
+                console.error('Error consolidating added Arc Flash report:', e);
+            }
+        }
+    }
+
+    // 4. Documentos HSE: PTW Electrical Safety, ABRA, PT 5, Reuniones de seguridad
+    const hseDocs = [
+        { buffer: window.hsePtwBuffer, name: 'PTW Electrical Safety' },
+        { buffer: window.hseAbraBuffer, name: 'ABRA' },
+        { buffer: window.hsePt5Buffer, name: 'PT 5' },
+        { buffer: window.hseReunionesBuffer, name: 'Reuniones de seguridad' }
+    ];
+
+    for (const doc of hseDocs) {
+        if (doc.buffer) {
+            try {
+                const hseDoc = await PDFDocument.load(doc.buffer);
+                const hsePages = await pdfDoc.copyPages(hseDoc, hseDoc.getPageIndices());
+                hsePages.forEach(p => pdfDoc.addPage(p));
+            } catch (e) {
+                console.error(`Error consolidando Documento HSE (${doc.name}):`, e);
+            }
+        }
+    }
 
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
@@ -1293,3 +2163,37 @@ if (tabPrincipales && tabOtros) {
         tabPrincipales.classList.add('border-transparent', 'text-gray-500');
     });
 }
+
+// --- Auto-load HSE Documents from local workspace folder ---
+async function autoLoadHseDocuments() {
+    const docs = [
+        { path: 'Documentos HSE/06. PTW Electrical Safety.pdf', bufferName: 'hsePtwBuffer', statusId: 'hsePtwStatus', nameId: 'hsePtwFileName', displayName: '06. PTW Electrical Safety.pdf' },
+        { path: 'Documentos HSE/01. ABRA.pdf', bufferName: 'hseAbraBuffer', statusId: 'hseAbraStatus', nameId: 'hseAbraFileName', displayName: '01. ABRA.pdf' },
+        { path: 'Documentos HSE/04 Pare Tome 5.pdf', bufferName: 'hsePt5Buffer', statusId: 'hsePt5Status', nameId: 'hsePt5FileName', displayName: '04 Pare Tome 5.pdf' },
+        { path: 'Documentos HSE/05. Formato de Capacitación.pdf', bufferName: 'hseReunionesBuffer', statusId: 'hseReunionesStatus', nameId: 'hseReunionesFileName', displayName: '05. Formato de Capacitación.pdf' }
+    ];
+
+    for (const doc of docs) {
+        try {
+            const response = await fetch(encodeURI(doc.path));
+            if (response.ok) {
+                const arrayBuf = await response.arrayBuffer();
+                window[doc.bufferName] = arrayBuf;
+                const statusEl = document.getElementById(doc.statusId);
+                const nameEl = document.getElementById(doc.nameId);
+                if (statusEl && nameEl) {
+                    statusEl.classList.remove('hidden');
+                    nameEl.textContent = doc.displayName + ' (Autocargado)';
+                }
+                console.log(`Autocargado exitoso: ${doc.displayName}`);
+            } else {
+                console.warn(`No se pudo autocargar: ${doc.path} (Status: ${response.status})`);
+            }
+        } catch (e) {
+            console.warn(`Error al intentar autocargar ${doc.path}:`, e);
+        }
+    }
+    if (window.lucide) window.lucide.createIcons();
+}
+
+autoLoadHseDocuments();

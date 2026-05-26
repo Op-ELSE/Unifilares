@@ -8,6 +8,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
     <!-- jsPDF for PDF Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <!-- PDF-Lib for merging PDFs -->
     <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
     <!-- Lucide Icons via unpkg -->
@@ -77,16 +78,19 @@
                 </div>
             </div>
 
-            <!-- Nuevo Módulo PPE ABB -->
+            <!-- Módulo Calculadora Arc Flash -->
             <div class="mt-4 pt-4 border-t border-gray-200">
-                <h2 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Seguridad Eléctrica (PPE)</h2>
-                <div class="flex gap-2">
-                    <a href="https://electricsafetycalc.abb.com/" target="_blank" class="flex-1 bg-abbred text-white p-2 text-xs rounded hover:bg-red-700 transition flex items-center justify-center gap-1 font-semibold shadow-sm text-center">
-                        <i data-lucide="external-link" class="w-3 h-3"></i> Ir a Calculadora
-                    </a>
+                <h2 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Seguridad Eléctrica</h2>
+                <button id="btnOpenArcFlash" class="w-full bg-gradient-to-r from-orange-500 to-abbred text-white p-3 text-sm rounded-lg hover:from-orange-600 hover:to-red-700 transition flex items-center justify-center gap-2 font-bold shadow-md">
+                    <i data-lucide="zap" class="w-4 h-4"></i> Calculadora Arc Flash
+                </button>
+                <div class="flex gap-2 mt-2">
                     <button id="btnUploadPpePdf" onclick="document.getElementById('ppePdfUpload').click()" class="flex-1 bg-white border border-gray-300 p-2 text-xs text-gray-600 rounded hover:bg-gray-50 transition flex items-center justify-center gap-1 font-medium">
-                        <i data-lucide="upload" class="w-3 h-3 text-abbdark"></i> Subir PDF
+                        <i data-lucide="upload" class="w-3 h-3"></i> Ref. PPE PDF
                     </button>
+                    <a href="https://electricsafetycalc.abb.com/" target="_blank" class="flex-1 bg-white border border-gray-300 p-2 text-xs text-gray-600 rounded hover:bg-gray-50 transition flex items-center justify-center gap-1 font-medium">
+                        <i data-lucide="external-link" class="w-3 h-3"></i> ABB Online
+                    </a>
                 </div>
                 <input type="file" id="ppePdfUpload" class="hidden" accept=".pdf" />
                 <div id="ppePdfStatus" class="hidden mt-2 p-2 bg-blue-50 border border-blue-100 rounded flex items-center gap-2">
@@ -95,6 +99,61 @@
                     <button id="btnRemovePpePdf" class="ml-auto text-red-500 hover:text-red-700 shrink-0">
                         <i data-lucide="x" class="w-3 h-3"></i>
                     </button>
+                </div>
+            </div>
+
+            <!-- Documentos HSE -->
+            <div class="mt-4 pt-4 border-t border-gray-200">
+                <h2 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Documentos HSE</h2>
+                <div class="flex flex-col gap-2">
+                    <!-- PTW Electrical Safety -->
+                    <div>
+                        <button onclick="document.getElementById('hsePtwUpload').click()" class="w-full bg-white border border-gray-300 p-2 text-xs text-gray-600 rounded hover:bg-gray-50 transition flex items-center justify-center gap-1 font-medium">
+                            <i data-lucide="file-plus" class="w-3 h-3 text-amber-500"></i> PTW Electrical Safety
+                        </button>
+                        <input type="file" id="hsePtwUpload" class="hidden" accept=".pdf" />
+                        <div id="hsePtwStatus" class="hidden mt-1 p-1.5 bg-amber-50 border border-amber-100 rounded flex items-center gap-2">
+                            <i data-lucide="check-circle" class="w-3 h-3 text-amber-500"></i>
+                            <span id="hsePtwFileName" class="text-[10px] text-amber-700 truncate font-semibold w-full">Cargado</span>
+                            <button id="btnRemoveHsePtw" class="ml-auto text-red-500 hover:text-red-700 shrink-0"><i data-lucide="x" class="w-3 h-3"></i></button>
+                        </div>
+                    </div>
+                    <!-- ABRA -->
+                    <div>
+                        <button onclick="document.getElementById('hseAbraUpload').click()" class="w-full bg-white border border-gray-300 p-2 text-xs text-gray-600 rounded hover:bg-gray-50 transition flex items-center justify-center gap-1 font-medium">
+                            <i data-lucide="file-plus" class="w-3 h-3 text-amber-500"></i> ABRA
+                        </button>
+                        <input type="file" id="hseAbraUpload" class="hidden" accept=".pdf" />
+                        <div id="hseAbraStatus" class="hidden mt-1 p-1.5 bg-amber-50 border border-amber-100 rounded flex items-center gap-2">
+                            <i data-lucide="check-circle" class="w-3 h-3 text-amber-500"></i>
+                            <span id="hseAbraFileName" class="text-[10px] text-amber-700 truncate font-semibold w-full">Cargado</span>
+                            <button id="btnRemoveHseAbra" class="ml-auto text-red-500 hover:text-red-700 shrink-0"><i data-lucide="x" class="w-3 h-3"></i></button>
+                        </div>
+                    </div>
+                    <!-- PT 5 -->
+                    <div>
+                        <button onclick="document.getElementById('hsePt5Upload').click()" class="w-full bg-white border border-gray-300 p-2 text-xs text-gray-600 rounded hover:bg-gray-50 transition flex items-center justify-center gap-1 font-medium">
+                            <i data-lucide="file-plus" class="w-3 h-3 text-amber-500"></i> PT 5
+                        </button>
+                        <input type="file" id="hsePt5Upload" class="hidden" accept=".pdf" />
+                        <div id="hsePt5Status" class="hidden mt-1 p-1.5 bg-amber-50 border border-amber-100 rounded flex items-center gap-2">
+                            <i data-lucide="check-circle" class="w-3 h-3 text-amber-500"></i>
+                            <span id="hsePt5FileName" class="text-[10px] text-amber-700 truncate font-semibold w-full">Cargado</span>
+                            <button id="btnRemoveHsePt5" class="ml-auto text-red-500 hover:text-red-700 shrink-0"><i data-lucide="x" class="w-3 h-3"></i></button>
+                        </div>
+                    </div>
+                    <!-- Reuniones de seguridad -->
+                    <div>
+                        <button onclick="document.getElementById('hseReunionesUpload').click()" class="w-full bg-white border border-gray-300 p-2 text-xs text-gray-600 rounded hover:bg-gray-50 transition flex items-center justify-center gap-1 font-medium">
+                            <i data-lucide="file-plus" class="w-3 h-3 text-amber-500"></i> Reuniones de seguridad
+                        </button>
+                        <input type="file" id="hseReunionesUpload" class="hidden" accept=".pdf" />
+                        <div id="hseReunionesStatus" class="hidden mt-1 p-1.5 bg-amber-50 border border-amber-100 rounded flex items-center gap-2">
+                            <i data-lucide="check-circle" class="w-3 h-3 text-amber-500"></i>
+                            <span id="hseReunionesFileName" class="text-[10px] text-amber-700 truncate font-semibold w-full">Cargado</span>
+                            <button id="btnRemoveHseReuniones" class="ml-auto text-red-500 hover:text-red-700 shrink-0"><i data-lucide="x" class="w-3 h-3"></i></button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -258,16 +317,271 @@
         <!-- Canvas Workspace -->
         <section class="flex-1 bg-zinc-800 relative overflow-hidden" id="workspace">
             <div class="w-full h-full relative" id="canvasContainer">
-                <canvas id="fabricCanvas"></canvas>
-            </div>
+    <canvas id="fabricCanvas"></canvas>
+    <div id="canvasTooltip" class="absolute hidden bg-gray-800 text-white text-xs px-2 py-1 rounded shadow-lg" style="pointer-events:none; left:0; top:0;"></div>
+</div>
         </section>
     </main>
     
+    <!-- ===== ARC FLASH CALCULATOR MODAL ===== -->
+    <div id="arcFlashModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[96vh] flex flex-col overflow-hidden" style="font-family:'Inter',sans-serif;">
 
+        <!-- Modal Header -->
+        <div class="bg-gradient-to-r from-gray-900 to-gray-800 text-white px-6 py-4 flex items-center justify-between shrink-0">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow">
+              <i data-lucide="zap" class="w-5 h-5 text-white"></i>
+            </div>
+            <div>
+              <h2 class="text-base font-black tracking-tight">Calculadora de Seguridad Eléctrica</h2>
+              <p class="text-xs text-gray-400">ABB Arc Flash &amp; Shock Hazard — NFPA 70E / IEEE 1584</p>
+            </div>
+          </div>
+          <button id="closeArcFlashModal" class="text-gray-400 hover:text-white transition p-2 rounded-lg hover:bg-white/10">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
 
+        <!-- Modal Body -->
+        <div class="flex flex-1 overflow-hidden">
+
+          <!-- LEFT: Inputs -->
+          <div class="w-72 shrink-0 bg-gray-50 border-r border-gray-200 p-5 overflow-y-auto flex flex-col gap-5">
+
+            <div>
+              <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Datos del Sistema</h3>
+              <div class="flex flex-col gap-2.5">
+                <div>
+                  <label class="text-xs font-semibold text-gray-600 mb-1 block">System Voltage (V)</label>
+                  <input type="number" id="af_voltage" value="" min="1" max="40000" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-orange-500 outline-none transition bg-white">
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-gray-600 mb-1 block">Upstream Overcurrent Breaker (device) (A)</label>
+                  <input type="number" id="af_breaker" value="" min="1" max="6500" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-orange-500 outline-none transition bg-white">
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-gray-600 mb-1 block">Short Circuit Current (Isc) (kA)</label>
+                  <input type="number" id="af_isc" value="" min="0.01" max="150" step="0.1" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-orange-500 outline-none transition bg-white">
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-gray-600 mb-1 block">Energy Storage (e.g. Capacitors) (kJ)</label>
+                  <input type="number" id="af_ecap" value="" min="0" max="300" step="0.1" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-orange-500 outline-none transition bg-white">
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-gray-600 mb-1 block">Opening Time (s)</label>
+                  <input type="number" id="af_time" value="" min="0.001" max="2" step="0.05" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-orange-500 outline-none transition bg-white">
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Configuración del Sistema</h3>
+              <div class="flex flex-col gap-2">
+                <div class="flex gap-2">
+                  <button data-group="acdc" data-val="AC" class="af-toggle active-toggle flex-1 py-2 text-xs font-bold rounded-lg border-2 border-orange-500 bg-orange-500 text-white transition">AC</button>
+                  <button data-group="acdc" data-val="DC" class="af-toggle flex-1 py-2 text-xs font-bold rounded-lg border-2 border-gray-200 bg-white text-gray-500 transition">DC</button>
+                </div>
+                <div class="flex gap-2">
+                  <button data-group="indoor" data-val="Indoor" class="af-toggle flex-1 py-2 text-xs font-bold rounded-lg border-2 border-orange-500 bg-orange-500 text-white transition">Indoor</button>
+                  <button data-group="indoor" data-val="Outdoor" class="af-toggle flex-1 py-2 text-xs font-bold rounded-lg border-2 border-gray-200 bg-white text-gray-500 transition">Outdoor</button>
+                </div>
+                <div class="flex gap-2">
+                  <button data-group="working" data-val="Isolated" class="af-toggle flex-1 py-2 text-xs font-bold rounded-lg border-2 border-orange-500 bg-orange-500 text-white transition">Isolated</button>
+                  <button data-group="working" data-val="Live" class="af-toggle flex-1 py-2 text-xs font-bold rounded-lg border-2 border-gray-200 bg-white text-gray-500 transition">Live</button>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Datos de la Etiqueta</h3>
+              <div class="flex flex-col gap-2.5">
+                <div>
+                  <label class="text-xs font-semibold text-gray-600 mb-1 block">ID Equipo / Barra</label>
+                  <input type="text" id="af_equipId" placeholder="Ej: TABLERO MT-01" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-orange-500 outline-none transition bg-white">
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-gray-600 mb-1 block">Dispositivo de Protección</label>
+                  <input type="text" id="af_device" placeholder="Ej: INTERRUPTOR ABB 630A" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-orange-500 outline-none transition bg-white">
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-gray-600 mb-1 block">Fecha de Evaluación</label>
+                  <input type="date" id="af_date" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-orange-500 outline-none transition bg-white">
+                </div>
+              </div>
+            </div>
+
+            <div id="af_warnings" class="hidden bg-red-50 border border-red-200 rounded-xl p-3">
+              <p class="text-xs font-black text-red-700 mb-1 flex items-center gap-1"><i data-lucide="alert-triangle" class="w-3 h-3"></i> Advertencias</p>
+              <p id="af_warnText" class="text-[11px] text-red-600 leading-relaxed"></p>
+            </div>
+
+            <button id="btnCalcArcFlash" class="w-full bg-gradient-to-r from-orange-500 to-abbred text-white py-3 rounded-xl font-black text-sm hover:from-orange-600 hover:to-red-700 transition shadow-lg flex items-center justify-center gap-2">
+              <i data-lucide="zap" class="w-4 h-4"></i> CALCULAR
+            </button>
+          </div>
+
+          <!-- RIGHT: Results -->
+          <div class="flex-1 p-6 overflow-y-auto bg-white flex flex-col gap-5">
+
+            <!-- Placeholder -->
+            <div id="af_placeholder" class="flex-1 flex flex-col items-center justify-center text-gray-200 gap-4 py-20">
+              <i data-lucide="zap-off" class="w-20 h-20"></i>
+              <p class="text-xl font-bold text-gray-300">Ingresa los datos y presiona Calcular</p>
+              <p class="text-sm text-gray-300">Los resultados y la etiqueta NFPA 70E aparecerán aquí</p>
+            </div>
+
+            <!-- Energy Banner -->
+            <div id="af_energyBanner" class="hidden bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl p-5 text-white flex items-center gap-5 shadow-lg">
+              <div class="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+                <i data-lucide="zap" class="w-7 h-7"></i>
+              </div>
+              <div class="flex-1">
+                <p class="text-xs font-semibold opacity-80 uppercase tracking-wider">Energía Incidente Calculada</p>
+                <p id="af_energyValue" class="text-4xl font-black">-- cal/cm²</p>
+                <p id="af_energyMethod" class="text-xs opacity-70 mt-0.5">Método: --</p>
+              </div>
+              <div class="text-right shrink-0">
+                <p class="text-xs opacity-80">Distancia de Trabajo</p>
+                <p id="af_workDist" class="text-xl font-black">--</p>
+                <p id="af_arcBoundaryBanner" class="text-xs opacity-80 mt-1">--</p>
+              </div>
+            </div>
+
+            <!-- PPE Category Visual Selector -->
+            <div id="af_categoryPanel" class="hidden">
+              <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Categoría EPP — Matriz ABB v.9</h3>
+              <div id="af_categoryRow" class="flex gap-2"></div>
+            </div>
+
+            <!-- Label Preview + Actions -->
+            <div id="af_labelContainer" class="hidden">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Vista Previa Etiqueta NFPA 70E</h3>
+                <div class="flex gap-2">
+                  <button id="btnAppendArcFlashToPdf" class="bg-emerald-600 text-white text-xs px-4 py-2 rounded-lg font-bold hover:bg-emerald-700 transition flex items-center gap-2 shadow">
+                    <i data-lucide="plus" class="w-3 h-3"></i> Añadir
+                  </button>
+                  <button id="btnExportArcDocx" class="bg-blue-600 text-white text-xs px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition flex items-center gap-2 shadow">
+                    <i data-lucide="file-text" class="w-3 h-3"></i> Exportar Word (DOCX)
+                  </button>
+                </div>
+              </div>
+
+              <!-- The Label -->
+              <div id="af_label" class="rounded-2xl overflow-hidden shadow-2xl border-4 border-orange-500 max-w-lg mx-auto">
+                <!-- Orange Header -->
+                <div class="bg-orange-500 px-4 py-3 flex items-center gap-3">
+                  <div class="w-10 h-10 bg-black rounded-full flex items-center justify-center shrink-0">
+                    <span class="text-yellow-400 font-black text-xl leading-none">⚠</span>
+                  </div>
+                  <div class="flex-1">
+                    <p class="text-black font-black text-xl leading-none">WARNING</p>
+                    <p class="text-black text-xs font-bold">Arc Flash &amp; Shock Hazard</p>
+                  </div>
+                  <div class="text-right">
+                    <p class="text-black text-[10px] font-black">ABB Electrical Safety</p>
+                    <p class="text-black text-[10px]">NFPA 70E Compliant</p>
+                  </div>
+                </div>
+                <!-- Red sub-bar -->
+                <div class="bg-red-700 px-4 py-1.5 text-center">
+                  <p class="text-white text-[11px] font-bold tracking-wide">Appropriate PPE Required — Do Not Work Without Protection</p>
+                </div>
+                <!-- Body -->
+                <div class="bg-white p-4">
+                  <!-- Arc Flash Section -->
+                  <div class="bg-orange-50 rounded-xl px-3 py-2 text-center mb-3">
+                    <p class="text-[10px] font-black text-orange-700 uppercase tracking-widest">⚡ Arc Flash Protection Boundary</p>
+                  </div>
+                  <div class="grid grid-cols-2 gap-x-4 gap-y-2 mb-3">
+                    <div>
+                      <p class="text-[9px] text-gray-400 font-bold uppercase">Arc Flash Boundary</p>
+                      <p id="lbl_arcBoundary" class="text-base font-black text-red-700">--</p>
+                    </div>
+                    <div>
+                      <p class="text-[9px] text-gray-400 font-bold uppercase">Incident Energy</p>
+                      <p id="lbl_energy" class="text-base font-black text-red-700">--</p>
+                    </div>
+                    <div>
+                      <p class="text-[9px] text-gray-400 font-bold uppercase">Glove Class / CAT</p>
+                      <p id="lbl_gloves" class="text-xs font-bold text-gray-800">--</p>
+                    </div>
+                    <div>
+                      <p class="text-[9px] text-gray-400 font-bold uppercase">Footwear</p>
+                      <p id="lbl_footwear" class="text-xs font-bold text-gray-800">--</p>
+                    </div>
+                    <div class="col-span-2">
+                      <p class="text-[9px] text-gray-400 font-bold uppercase">Required PPE (Arc Flash Workwear)</p>
+                      <p id="lbl_ppe" class="text-xs font-bold text-gray-800 leading-snug">--</p>
+                    </div>
+                  </div>
+                  <!-- Shock Section -->
+                  <div class="bg-blue-50 rounded-xl px-3 py-2 text-center mb-3">
+                    <p class="text-[10px] font-black text-blue-700 uppercase tracking-widest">⚡ Shock Hazard Protection Boundaries</p>
+                  </div>
+                  <div class="grid grid-cols-2 gap-x-4 gap-y-2 mb-3">
+                    <div>
+                      <p class="text-[9px] text-gray-400 font-bold uppercase">Shock Hazard</p>
+                      <p id="lbl_shockV" class="text-base font-black text-blue-700">--</p>
+                    </div>
+                    <div>
+                      <p class="text-[9px] text-gray-400 font-bold uppercase">Limited Approach Boundary</p>
+                      <p id="lbl_limited" class="text-sm font-bold text-gray-800">--</p>
+                    </div>
+                    <div>
+                      <p class="text-[9px] text-gray-400 font-bold uppercase">Restricted Approach Boundary</p>
+                      <p id="lbl_restricted" class="text-sm font-bold text-gray-800">--</p>
+                    </div>
+                    <div>
+                      <p class="text-[9px] text-gray-400 font-bold uppercase">Limited (Movable Cond.)</p>
+                      <p id="lbl_limitedMovable" class="text-base font-black text-blue-700">--</p>
+                    </div>
+                  </div>
+                  <!-- Footer info -->
+                  <div class="border-t border-gray-100 pt-3 grid grid-cols-2 gap-x-4 gap-y-1.5">
+                    <div>
+                      <p class="text-[9px] text-gray-400 font-bold uppercase">Bus / Equipment ID</p>
+                      <p id="lbl_equipId" class="text-xs font-bold text-gray-800">--</p>
+                    </div>
+                    <div>
+                      <p class="text-[9px] text-gray-400 font-bold uppercase">Protective Device</p>
+                      <p id="lbl_device" class="text-xs font-bold text-gray-800">--</p>
+                    </div>
+                    <div>
+                      <p class="text-[9px] text-gray-400 font-bold uppercase">Assessment Date</p>
+                      <p id="lbl_date" class="text-xs font-bold text-gray-800">--</p>
+                    </div>
+                    <div>
+                      <p class="text-[9px] text-gray-400 font-bold uppercase">PPE Category</p>
+                      <p id="lbl_cat" class="text-lg font-black" style="color:#FF000F">CAT --</p>
+                    </div>
+                  </div>
+                </div>
+                <!-- Label Footer -->
+                <div class="bg-gray-900 px-4 py-2 text-center">
+                  <p class="text-[9px] text-gray-400">THIS LABEL IS FOR TEMPORARY USE AND MUST BE REMOVED AFTER SERVICE IS COMPLETED</p>
+                  <p class="text-[8px] text-gray-500 mt-0.5">Generated using estimated values — For use in absence of a formal arc flash risk assessment</p>
+                </div>
+              </div><!-- end label -->
+            </div><!-- end labelContainer -->
+
+          </div><!-- end right -->
+        </div><!-- end body -->
+      </div><!-- end modal card -->
+    </div><!-- end overlay -->
+    <!-- ===== END MODAL ===== -->
+
+    <!-- html2canvas for label capture -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <!-- PDF.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js";</script>
+    <!-- JSZip for DOCX template manipulation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- DOCX Template Base64 Data -->
+    <script src="docxTemplateData.js"></script>
+    <script src="imagesData.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
