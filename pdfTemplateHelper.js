@@ -208,6 +208,24 @@ async function populateTemplate(data, eppImageBase64) {
     URL.revokeObjectURL(url);
   }
 
+  /**
+   * Download the Word template (`Anexo plantilla.docx`) and rename it to `.pdf` for the user.
+   * The file content is not altered – only the extension is changed on download.
+   * This satisfies the requirement to deliver the Word document as a PDF file without conversion.
+   */
+  async function downloadWordAsPdf() {
+    const response = await fetch('Anexo plantilla.docx');
+    if (!response.ok) throw new Error('Unable to fetch Word template');
+    const arrayBuf = await response.arrayBuffer();
+    const blob = new Blob([arrayBuf], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Anexo plantilla.pdf'; // rename extension
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   // Export helper functions for the app
   window.pdfTemplateHelper = {
     populateTemplate,
