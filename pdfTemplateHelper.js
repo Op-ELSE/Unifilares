@@ -166,7 +166,7 @@ async function populateTemplate(data, eppImageBase64) {
     const { x: fx, y: fy } = toPdfLibCoords(page2, x, y);
     page2.drawText(String(value), {
       x: fx,
-      y: fy - h,
+      y: fy,
       size: 12,
       color: PDFLib.rgb(0, 0, 0)
     });
