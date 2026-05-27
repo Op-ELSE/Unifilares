@@ -898,8 +898,8 @@ async function generateArcFlashPDFBytes() {
 
         // EPP (PPE) Image on the left side
         const eppImgData = window.IMAGES_DATA ? window.IMAGES_DATA[catLetter] : null;
-        const eppImgW = 35;
-        const eppImgH = 100;
+        const eppImgW = 3.5;
+        const eppImgH = 10;
         if (eppImgData) {
             try {
                 doc.addImage(getBase64Data(eppImgData), 'PNG', 15, headingY + 22, eppImgW, eppImgH);

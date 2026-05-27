@@ -28,9 +28,9 @@ async function loadTemplate() {
  * @returns {{x:number, y:number}}
  */
 function toPdfLibCoords(page, x, y) {
-  const { width, height } = page.getSize();
-  // Convert from top‑left to bottom‑left and mirror horizontally
-  return { x: width - x, y: height - y };
+  const { height } = page.getSize();
+  // Convert from top‑left to bottom‑left (pdf-lib origin is bottom‑left)
+  return { x, y: height - y };
 }
 
 /**
