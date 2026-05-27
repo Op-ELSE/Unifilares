@@ -209,7 +209,7 @@ async function downloadTemplateWithEpp(eppImageBase64) {
  * This satisfies the requirement to deliver the Word document as a PDF file without conversion.
  */
 async function downloadWordAsPdf() {
-  const response = await fetch('Anexo plantilla.docx');
+  const response = await fetch('Anexo plantilla_clean.docx');
   if (!response.ok) throw new Error('Unable to fetch Word template');
   const arrayBuf = await response.arrayBuffer();
   const blob = new Blob([arrayBuf], {
