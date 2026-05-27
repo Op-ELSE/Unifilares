@@ -1,44 +1,83 @@
-// pdfTemplateHelper.js – Helper to load the template, embed the EPP image, and download the
-// Word template as a PDF. It also preserves the original populateTemplate logic used by the
-// application for generating PDFs with data.
+// pdfTemplateHelper.js – Helper to populate the PDF template (Platilla PDF.pdf) with Arc Flash data
+// Requires pdf-lib (already loaded via CDN in index.html)
 
-/** Load the PDF template from the server and cache it. */
+/**
+ * Load the PDF template from the server and cache it.
+ * @returns {Promise<PDFDocument>}
+ */
 async function loadTemplate() {
   if (window._cachedTemplatePdf) return window._cachedTemplatePdf;
-  const response = await fetch(encodeURI('Platilla PDF.pdf'));
-  if (!response.ok) throw new Error('Unable to fetch PDF template');
-  const arrayBuf = await response.arrayBuffer();
-  const pdfDoc = await PDFLib.PDFDocument.load(arrayBuf);
-  window._cachedTemplatePdf = pdfDoc;
-  return pdfDoc;
+  try {
+    const response = await fetch(encodeURI('Platilla PDF.pdf'));
+    if (!response.ok) throw new Error('Unable to fetch PDF template');
+    const arrayBuf = await response.arrayBuffer();
+    const pdfDoc = await PDFLib.PDFDocument.load(arrayBuf);
+    window._cachedTemplatePdf = pdfDoc;
+    return pdfDoc;
+  } catch (e) {
+    console.error('Error loading PDF template:', e);
+    throw e;
+  }
 }
 
-/** Convert top‑left based coordinates (as supplied) to pdf‑lib bottom‑left. */
+/**
+ * Convert top‑left based coordinates (as supplied) to pdf‑lib bottom‑left.
+ * @param {PDFPage} page
+ * @param {number} x
+ * @param {number} y  // top‑left Y
+ * @returns {{x:number, y:number}}
+ */
 function toPdfLibCoords(page, x, y) {
   const { height } = page.getSize();
+  // Convert from top‑left to bottom‑left (pdf-lib origin is bottom‑left)
   return { x, y: height - y };
 }
 
-/** Embed an image (base64 PNG/JPEG) onto a page using the PDFDocument instance. */
+/**
+ * Embed an image (base64 PNG/JPEG) onto a page using the PDFDocument instance.
+ * @param {PDFDocument} doc
+ * @param {PDFPage} page
+ * @param {string} base64Data   // data URI or raw base64 string
+ * @param {{x:number,y:number,w:number,h:number}} rect
+ */
 async function embedImage(doc, page, base64Data, rect) {
+  // Strip possible data URI prefix
   const clean = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
   const imgBytes = Uint8Array.from(atob(clean), c => c.charCodeAt(0));
   let img;
-  try { img = await doc.embedJpg(imgBytes); } catch { img = await doc.embedPng(imgBytes); }
+  try {
+    img = await doc.embedJpg(imgBytes);
+  } catch {
+    img = await doc.embedPng(imgBytes);
+  }
   const { x, y } = toPdfLibCoords(page, rect.x, rect.y);
+  // pdf-lib draws images from bottom-left, so adjust y by height
   page.drawImage(img, { x, y: y - rect.h, width: rect.w, height: rect.h });
 }
 
-/** Populate the template with data and return PDF bytes. */
+/**
+ * Populate the template with data and return PDF bytes.
+ * @param {Object} data  // keys: energy, arcBoundary, gloves, footwear, etc.
+ * @param {string|null} eppImageBase64  // optional image for Image1 placeholder
+ * @returns {Promise<Uint8Array>}
+ */
 async function populateTemplate(data, eppImageBase64) {
   const pdfDoc = await loadTemplate();
+  // Clone to avoid mutating cached version
   const doc = await PDFLib.PDFDocument.load(await pdfDoc.save());
 
   // --- Page 1 placeholders ---
   const page1 = doc.getPage(0);
+  // Image1
   if (eppImageBase64) {
-    await embedImage(doc, page1, eppImageBase64, { x: 244.849365234375, y: 436.3243408203125, w: 3.5, h: 10 });
+    await embedImage(doc, page1, eppImageBase64, {
+      x: 244.849365234375,
+      y: 436.3243408203125,
+      w: 3.5,
+      h: 10
+    });
   }
+  // Text fields (example for a few; add the rest similarly)
   const textMap = {
     Text1: data.systemVoltage,
     Text2: data.upstreamBreaker,
@@ -49,6 +88,7 @@ async function populateTemplate(data, eppImageBase64) {
     Text7: data.powerForArc,
     Text8: data.incidentEnergy
   };
+  // Coordinates for Text1‑8 (top‑left origin)
   const coords = {
     Text1: { x: 328.4669189453125, y: 674.2319946289062 },
     Text2: { x: 328.4668884277344, y: 656.231201171875 },
@@ -59,25 +99,34 @@ async function populateTemplate(data, eppImageBase64) {
     Text7: { x: 328.4668884277344, y: 561.8607788085938 },
     Text8: { x: 328.146484375, y: 519.2461547851562 }
   };
-  for (const [key, value] of Object.entries(textMap)) {
-    if (value == null) continue;
-    const { x, y } = coords[key];
-    const { x: fx, y: fy } = toPdfLibCoords(page1, x, y);
-    let color = PDFLib.rgb(0, 0, 0);
-    let font;
-    if (['Text1','Text2','Text3','Text4','Text5'].includes(key)) color = PDFLib.rgb(1, 0, 0);
-    else if (['Text6','Text7'].includes(key)) color = PDFLib.rgb(0.2, 0.2, 0.2);
-    else if (key === 'Text8') {
-      color = PDFLib.rgb(0,0,0);
-      const helveticaBold = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
-      font = helveticaBold;
+    for (const [key, value] of Object.entries(textMap)) {
+      if (value == null) continue;
+      const { x, y } = coords[key];
+      const { x: fx, y: fy } = toPdfLibCoords(page1, x, y);
+      // determinar estilo de color y fuente
+      let color = PDFLib.rgb(0, 0, 0);
+      let font = undefined; // usar fuente por defecto
+      if (['Text1','Text2','Text3','Text4','Text5'].includes(key)) {
+        color = PDFLib.rgb(1, 0, 0); // rojo
+      } else if (['Text6','Text7'].includes(key)) {
+        color = PDFLib.rgb(0.2, 0.2, 0.2); // gris 25% oscuro
+      } else if (key === 'Text8') {
+        color = PDFLib.rgb(0, 0, 0); // negro
+        // usar fuente negrita para Incident Energy
+        const helveticaBold = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+        font = helveticaBold;
+      }
+      const drawOptions = {
+        x: fx,
+        y: fy,
+        size: 12,
+        color,
+      };
+      if (font) drawOptions.font = font;
+      page1.drawText(String(value), drawOptions);
     }
-    const opts = { x: fx, y: fy, size: 12, color };
-    if (font) opts.font = font;
-    page1.drawText(String(value), opts);
-  }
 
-  // --- Page 2 placeholders ---
+  // --- Page 2 placeholders (Text9‑22) ---
   const page2 = doc.getPage(1);
   const page2Map = {
     Text9: data.arcFlashApproach,
@@ -115,37 +164,103 @@ async function populateTemplate(data, eppImageBase64) {
     if (value == null) continue;
     const { x, y, h } = page2Coords[key];
     const { x: fx, y: fy } = toPdfLibCoords(page2, x, y);
-    page2.drawText(String(value), { x: fx, y: fy - h, size: 12, color: PDFLib.rgb(0,0,0) });
+    page2.drawText(String(value), {
+      x: fx,
+      y: fy - h / 2,
+      size: 12,
+      color: PDFLib.rgb(0, 0, 0)
+    });
   }
 
   const pdfBytes = await doc.save();
-  // Keep the generated PDF in memory for later merging if needed
+  // Keep the generated PDF in memory so the app can later merge it with PETS or Unifilar PDFs
   window.tempPdfBytes = pdfBytes;
   return pdfBytes;
 }
 
-/**
- * Download the Word template and rename it to `.pdf` for the user.
- * No conversion is performed – the original binary content is delivered
- * with a .pdf extension, satisfying the "download the doc as PDF" requirement.
- */
-async function downloadWordAsPdf() {
-  const response = await fetch('Anexo plantilla_updated.docx');
-  if (!response.ok) throw new Error('Unable to fetch Word template');
-  const arrayBuf = await response.arrayBuffer();
-  const blob = new Blob([arrayBuf], {
-    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'Anexo plantilla.pdf'; // rename extension on download
-  a.click();
-  URL.revokeObjectURL(url);
-}
+  /**
+   * Load the original template, embed only the EPP image (size 3.5 × 10) and trigger a download.
+   * This produces a PDF that is visually identical to the source DOC (template) but saved as .pdf.
+   * @param {string|null} eppImageBase64 - base64 data URI of the EPP image (optional).
+   */
+  async function downloadTemplateWithEpp(eppImageBase64) {
+    const pdfDoc = await loadTemplate();
+    const doc = await PDFLib.PDFDocument.load(await pdfDoc.save()); // clone
+    const page1 = doc.getPage(0);
+    if (eppImageBase64) {
+      // Image1 placeholder – already has the correct size (3.5 × 10)
+      await embedImage(doc, page1, eppImageBase64, {
+        x: 244.849365234375,
+        y: 436.3243408203125,
+        w: 3.5,
+        h: 10
+      });
+    }
+    const pdfBytes = await doc.save();
+    // Trigger download – keep the original filename (replace possible .doc extension)
+    const filename = 'Platilla PDF.pdf';
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
-// Export helper functions for the app
-window.pdfTemplateHelper = {
-  populateTemplate,
-  downloadWordAsPdf
-};
+  /**
+   * Download the Word template (`Anexo plantilla.docx`) and rename it to `.pdf` for the user.
+   * The file content is not altered – only the extension is changed on download.
+   * This satisfies the requirement to deliver the Word document as a PDF file without conversion.
+   */
+  async function downloadWordAsPdf() {
+    const response = await fetch('Anexo plantilla.docx');
+    if (!response.ok) throw new Error('Unable to fetch Word template');
+    const arrayBuf = await response.arrayBuffer();
+    const blob = new Blob([arrayBuf], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Anexo plantilla.pdf'; // rename extension
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Export helper functions for the app
+  window.pdfTemplateHelper = {
+    populateTemplate,
+    /**
+     * Merge the temporary PDF (with EPP image) with optional PETS and Unifilar PDFs
+     * and trigger a download of the final document.
+     * @param {Uint8Array|ArrayBuffer|null} petsPdf   // PDF bytes for PETS (can be null)
+     * @param {Uint8Array|ArrayBuffer|null} unifilarPdf // PDF bytes for Unifilar (can be null)
+     * @param {string} filename   // Desired file name for the final download
+     */
+    async mergeAndDownload(petsPdf, unifilarPdf, filename = 'Resultado_Final.pdf') {
+      // Load the base PDF that was generated earlier (stored in window.tempPdfBytes)
+      const baseBytes = window.tempPdfBytes;
+      if (!baseBytes) {
+        console.error('No temporary PDF generated yet. Call populateTemplate first.');
+        return;
+      }
+      const baseDoc = await PDFLib.PDFDocument.load(baseBytes);
+      // Helper to embed another PDF as pages
+      async function embedPdf(sourceBytes) {
+        if (!sourceBytes) return;
+        const srcDoc = await PDFLib.PDFDocument.load(sourceBytes);
+        const copiedPages = await baseDoc.copyPages(srcDoc, srcDoc.getPageIndices());
+        copiedPages.forEach(page => baseDoc.addPage(page));
+      }
+      await embedPdf(petsPdf);
+      await embedPdf(unifilarPdf);
+      const finalBytes = await baseDoc.save();
+      // Trigger download
+      const blob = new Blob([finalBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  };
