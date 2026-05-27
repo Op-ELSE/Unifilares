@@ -166,17 +166,83 @@ async function populateTemplate(data, eppImageBase64) {
     const { x: fx, y: fy } = toPdfLibCoords(page2, x, y);
     page2.drawText(String(value), {
       x: fx,
-      y: fy,
+      y: fy - h / 2,
       size: 12,
       color: PDFLib.rgb(0, 0, 0)
     });
   }
 
   const pdfBytes = await doc.save();
+  // Keep the generated PDF in memory so the app can later merge it with PETS or Unifilar PDFs
+  window.tempPdfBytes = pdfBytes;
   return pdfBytes;
 }
 
-// Export for use in app.js (module pattern – we are in a script tag, so attach to window)
-window.pdfTemplateHelper = {
-  populateTemplate
-};
+  /**
+   * Load the original template, embed only the EPP image (size 3.5 × 10) and trigger a download.
+   * This produces a PDF that is visually identical to the source DOC (template) but saved as .pdf.
+   * @param {string|null} eppImageBase64 - base64 data URI of the EPP image (optional).
+   */
+  async function downloadTemplateWithEpp(eppImageBase64) {
+    const pdfDoc = await loadTemplate();
+    const doc = await PDFLib.PDFDocument.load(await pdfDoc.save()); // clone
+    const page1 = doc.getPage(0);
+    if (eppImageBase64) {
+      // Image1 placeholder – already has the correct size (3.5 × 10)
+      await embedImage(doc, page1, eppImageBase64, {
+        x: 244.849365234375,
+        y: 436.3243408203125,
+        w: 3.5,
+        h: 10
+      });
+    }
+    const pdfBytes = await doc.save();
+    // Trigger download – keep the original filename (replace possible .doc extension)
+    const filename = 'Platilla PDF.pdf';
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Export helper functions for the app
+  window.pdfTemplateHelper = {
+    populateTemplate,
+    /**
+     * Merge the temporary PDF (with EPP image) with optional PETS and Unifilar PDFs
+     * and trigger a download of the final document.
+     * @param {Uint8Array|ArrayBuffer|null} petsPdf   // PDF bytes for PETS (can be null)
+     * @param {Uint8Array|ArrayBuffer|null} unifilarPdf // PDF bytes for Unifilar (can be null)
+     * @param {string} filename   // Desired file name for the final download
+     */
+    async mergeAndDownload(petsPdf, unifilarPdf, filename = 'Resultado_Final.pdf') {
+      // Load the base PDF that was generated earlier (stored in window.tempPdfBytes)
+      const baseBytes = window.tempPdfBytes;
+      if (!baseBytes) {
+        console.error('No temporary PDF generated yet. Call populateTemplate first.');
+        return;
+      }
+      const baseDoc = await PDFLib.PDFDocument.load(baseBytes);
+      // Helper to embed another PDF as pages
+      async function embedPdf(sourceBytes) {
+        if (!sourceBytes) return;
+        const srcDoc = await PDFLib.PDFDocument.load(sourceBytes);
+        const copiedPages = await baseDoc.copyPages(srcDoc, srcDoc.getPageIndices());
+        copiedPages.forEach(page => baseDoc.addPage(page));
+      }
+      await embedPdf(petsPdf);
+      await embedPdf(unifilarPdf);
+      const finalBytes = await baseDoc.save();
+      // Trigger download
+      const blob = new Blob([finalBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  };
