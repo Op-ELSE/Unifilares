@@ -718,72 +718,59 @@ if (btnExportArcDocx) {
     btnExportArcDocx.addEventListener('click', exportLabelToDocx);
 }
 
-// Export label to PDF button (downloads individual PDF report)
+// Export label to PDF button — genera el mismo DOCX y lo convierte a PDF vía docx-preview + html2canvas + jsPDF
 const btnExportArcPdf = document.getElementById('btnExportArcPdf');
 if (btnExportArcPdf) {
     btnExportArcPdf.addEventListener('click', async () => {
-        const originalContent = btnExportArcPdf.innerHTML;
-        btnExportArcPdf.disabled = true;
-        btnExportArcPdf.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Exportando...`;
-        if (window.lucide) window.lucide.createIcons();
-        
-        // Recopilar datos de la UI
-        const inputs = {
-            systemVoltage: document.getElementById('af_voltage')?.value || '--',
-            upstreamBreaker: document.getElementById('af_breaker')?.value || '--',
-            shortCircuit: document.getElementById('af_isc')?.value || '--',
-            energyStorage: document.getElementById('af_ecap')?.value || '--',
-            openingTime: document.getElementById('af_time')?.value || '--',
-            workingDistance: (parseFloat(document.getElementById('af_voltage')?.value) <= 600 ? '455 mm (18 in)' : '910 mm (36 in)'),
-            powerForArc: (() => {
-                const v = parseFloat(document.getElementById('af_voltage')?.value) || 0;
-                const i = parseFloat(document.getElementById('af_breaker')?.value) || 0;
-                return ((v * Math.sqrt(3) * i) / 1000).toFixed(1);
-            })(),
-            incidentEnergy: document.getElementById('lbl_energy')?.textContent.replace(' cal/cm²', '').trim() || '--',
-            arcFlashApproach: document.getElementById('lbl_arcBoundary')?.textContent || '--',
-            limitsApproach: '--', // No disponible en la UI actual
-            restrictedApproach: '--', // No disponible en la UI actual
-            exposedMovable: '--', // No disponible en la UI actual
-            arcFlashBoundary: document.getElementById('lbl_arcBoundary')?.textContent || '--',
-            glove: document.getElementById('lbl_gloves')?.textContent || '--',
-            requiredPPE: document.getElementById('lbl_ppe')?.textContent || '--',
-            footwear: document.getElementById('lbl_footwear')?.textContent || '--',
-            shockHazard: document.getElementById('lbl_shockV')?.textContent || '--',
-            limitedApproach: document.getElementById('lbl_limited')?.textContent || '--',
-            restrictedApproach2: document.getElementById('lbl_restricted')?.textContent || '--',
-            busEquipmentId: document.getElementById('lbl_equipId')?.textContent || '--',
-            assessmentDate: document.getElementById('lbl_date')?.textContent || '--',
-            protectiveDevice: document.getElementById('lbl_device')?.textContent || '--'
-        };
-        
-        // Imagen de EPP (si está disponible)
-        const eppImageBase64 = (window.IMAGES_DATA && window.IMAGES_DATA.shock) ? window.IMAGES_DATA.shock : null;
-        
-        console.log('Calling populateTemplate with inputs', inputs);
-        const pdfBytes = await window.pdfTemplateHelper.populateTemplate(inputs, eppImageBase64);
-        console.log('populateTemplate returned', pdfBytes ? pdfBytes.length : 'null');
         try {
-            if (!pdfBytes) throw new Error('No se recibió bytes del PDF');
-            const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
+            // Generar mismo DOCX
+            const blobContent = await buildArcFlashDocxBlob();
+
+            // Crear contenedor oculto
+            const previewContainer = document.createElement('div');
+            previewContainer.style.position = 'fixed';
+            previewContainer.style.left = '-99999px';
+            previewContainer.style.top = '0';
+            previewContainer.style.width = '816px';
+            previewContainer.style.background = 'white';
+            document.body.appendChild(previewContainer);
+
+            // Renderizar DOCX como HTML
+            await docx.renderAsync(blobContent, previewContainer);
+
+            // Esperar render
+            await new Promise(r => setTimeout(r, 1000));
+
+            // Screenshot
+            const pdfCanvas = await html2canvas(previewContainer, {
+                scale: 2,
+                useCORS: true
+            });
+
+            // Crear PDF
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'px',
+                format: [pdfCanvas.width, pdfCanvas.height]
+            });
+            const imgData = pdfCanvas.toDataURL('image/png');
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfCanvas.width, pdfCanvas.height);
+
+            // Nombre
             const equipId = document.getElementById('lbl_equipId')?.textContent || 'report';
             const cleanEquipId = equipId.replace(/[^a-zA-Z0-9]/g, '_') || 'report';
-            link.download = `Anexo_Calculadora_Arc_Flash_${cleanEquipId}.pdf`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
+
+            // Descargar PDF
+            pdf.save(`Anexo_Calculadora_Arc_Flash_${cleanEquipId}.pdf`);
+
+            // Limpiar
+            document.body.removeChild(previewContainer);
+
         } catch (err) {
-            console.error('Error generando PDF con plantilla:', err);
-            alert('Error al generar el PDF: ' + err.message);
+            console.error(err);
+            alert('Error generando PDF: ' + err.message);
         }
-        
-        btnExportArcPdf.disabled = false;
-        btnExportArcPdf.innerHTML = originalContent;
-        if (window.lucide) window.lucide.createIcons();
     });
 }
 
@@ -973,163 +960,146 @@ async function generateArcFlashPDFBytes() {
     }
 }
 
-async function exportLabelToDocx() {
-    if (typeof JSZip === 'undefined') {
-        alert('La biblioteca JSZip no está cargada.');
-        return;
+// ─────────────────────────────────────────────────────────────────────────────
+// Función reutilizable: genera y devuelve el Blob DOCX con datos de la UI
+// ─────────────────────────────────────────────────────────────────────────────
+async function buildArcFlashDocxBlob() {
+    if (typeof JSZip === 'undefined') throw new Error('JSZip no está cargado.');
+    if (!window.DOCX_TEMPLATE_DATA) throw new Error('La plantilla DOCX no está disponible.');
+
+    const energy      = document.getElementById('lbl_energy')?.textContent || '--';
+    const arcBoundary = document.getElementById('lbl_arcBoundary')?.textContent || '--';
+    const ppe         = document.getElementById('lbl_ppe')?.textContent || '--';
+    const gloves      = document.getElementById('lbl_gloves')?.textContent || '--';
+    const footwear    = document.getElementById('lbl_footwear')?.textContent || '--';
+    const shockV      = document.getElementById('lbl_shockV')?.textContent || '--';
+    const limited     = document.getElementById('lbl_limited')?.textContent || '--';
+    const restricted  = document.getElementById('lbl_restricted')?.textContent || '--';
+    const limitedMov  = document.getElementById('lbl_limitedMovable')?.textContent || '--';
+    const equipId     = document.getElementById('lbl_equipId')?.textContent || '--';
+    const device      = document.getElementById('lbl_device')?.textContent || '--';
+    const dateVal     = document.getElementById('lbl_date')?.textContent || '--';
+    const category    = document.getElementById('lbl_cat')?.textContent || '--';
+    const catLetter   = category.replace('CAT ', '').trim();
+
+    const voltage = document.getElementById('af_voltage')?.value || '--';
+    const breaker = document.getElementById('af_breaker')?.value || '--';
+    const isc     = document.getElementById('af_isc')?.value || '--';
+    const ecap    = document.getElementById('af_ecap')?.value || '--';
+    const time    = document.getElementById('af_time')?.value || '--';
+
+    const vNum = parseFloat(voltage) || 0;
+    const bNum = parseFloat(breaker) || 0;
+    const powerVal = ((vNum * Math.sqrt(3) * bNum) / 1000).toFixed(1);
+
+    const zip = await JSZip.loadAsync(window.DOCX_TEMPLATE_DATA, { base64: true });
+    const parser = new DOMParser();
+    const serializer = new XMLSerializer();
+
+    const eppImgData = window.IMAGES_DATA ? window.IMAGES_DATA[catLetter] : null;
+    let rIdPPE = null;
+    if (eppImgData) {
+        const base64Data = getBase64Data(eppImgData);
+        zip.file('word/media/ppe_image.png', base64Data, { base64: true });
+
+        let relsXmlText = await zip.file('word/_rels/document.xml.rels').async('string');
+        const relsDoc = parser.parseFromString(relsXmlText, 'application/xml');
+        let relationships = relsDoc.getElementsByTagNameNS('http://schemas.openxmlformats.org/package/2006/relationships', 'Relationships')[0];
+        if (!relationships) relationships = relsDoc.getElementsByTagName('Relationships')[0];
+        if (relationships) {
+            rIdPPE = 'rIdPPE' + Date.now();
+            const newRel = relsDoc.createElementNS('http://schemas.openxmlformats.org/package/2006/relationships', 'Relationship');
+            newRel.setAttribute('Id', rIdPPE);
+            newRel.setAttribute('Type', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image');
+            newRel.setAttribute('Target', 'media/ppe_image.png');
+            relationships.appendChild(newRel);
+            zip.file('word/_rels/document.xml.rels', serializer.serializeToString(relsDoc));
+        }
     }
-    if (!window.DOCX_TEMPLATE_DATA) {
-        alert('La plantilla DOCX no está disponible.');
-        return;
+
+    let docXmlText = await zip.file('word/document.xml').async('string');
+    const xmlDoc = parser.parseFromString(docXmlText, 'application/xml');
+
+    function getElementsByTagNameNSOrLocal(element, localName) {
+        let list = element.getElementsByTagName('w:' + localName);
+        if (list.length === 0) list = element.getElementsByTagName(localName);
+        return Array.from(list);
     }
 
-    try {
-        const energy      = document.getElementById('lbl_energy')?.textContent || '--';
-        const arcBoundary = document.getElementById('lbl_arcBoundary')?.textContent || '--';
-        const ppe         = document.getElementById('lbl_ppe')?.textContent || '--';
-        const gloves      = document.getElementById('lbl_gloves')?.textContent || '--';
-        const footwear    = document.getElementById('lbl_footwear')?.textContent || '--';
-        const shockV      = document.getElementById('lbl_shockV')?.textContent || '--';
-        const limited     = document.getElementById('lbl_limited')?.textContent || '--';
-        const restricted  = document.getElementById('lbl_restricted')?.textContent || '--';
-        const limitedMov  = document.getElementById('lbl_limitedMovable')?.textContent || '--';
-        const equipId     = document.getElementById('lbl_equipId')?.textContent || '--';
-        const device      = document.getElementById('lbl_device')?.textContent || '--';
-        const dateVal     = document.getElementById('lbl_date')?.textContent || '--';
-        const category    = document.getElementById('lbl_cat')?.textContent || '--';
-        const catLetter   = category.replace('CAT ', '').trim();
-
-        const voltage = document.getElementById('af_voltage')?.value || '--';
-        const breaker = document.getElementById('af_breaker')?.value || '--';
-        const isc     = document.getElementById('af_isc')?.value || '--';
-        const ecap    = document.getElementById('af_ecap')?.value || '--';
-        const time    = document.getElementById('af_time')?.value || '--';
-
-        const vNum = parseFloat(voltage) || 0;
-        const bNum = parseFloat(breaker) || 0;
-        const powerVal = ((vNum * Math.sqrt(3) * bNum) / 1000).toFixed(1);
-
-        const zip = await JSZip.loadAsync(window.DOCX_TEMPLATE_DATA, { base64: true });
-        const parser = new DOMParser();
-        const serializer = new XMLSerializer();
-
-        const eppImgData = window.IMAGES_DATA ? window.IMAGES_DATA[catLetter] : null;
-        let rIdPPE = null;
-        if (eppImgData) {
-            const base64Data = getBase64Data(eppImgData);
-            zip.file("word/media/ppe_image.png", base64Data, {base64: true});
-            
-            let relsXmlText = await zip.file("word/_rels/document.xml.rels").async("string");
-            const relsDoc = parser.parseFromString(relsXmlText, "application/xml");
-            let relationships = relsDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/package/2006/relationships", "Relationships")[0];
-            if (!relationships) {
-                relationships = relsDoc.getElementsByTagName("Relationships")[0];
-            }
-            if (relationships) {
-                rIdPPE = "rIdPPE" + Date.now();
-                const newRel = relsDoc.createElementNS("http://schemas.openxmlformats.org/package/2006/relationships", "Relationship");
-                newRel.setAttribute("Id", rIdPPE);
-                newRel.setAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image");
-                newRel.setAttribute("Target", "media/ppe_image.png");
-                relationships.appendChild(newRel);
-                zip.file("word/_rels/document.xml.rels", serializer.serializeToString(relsDoc));
-            }
+    function replaceCellText(cellNode, newText) {
+        if (!cellNode) return;
+        const pNodes = getElementsByTagNameNSOrLocal(cellNode, 'p');
+        if (pNodes.length === 0) return;
+        const pNode = pNodes[0];
+        const rNodes = getElementsByTagNameNSOrLocal(pNode, 'r');
+        if (rNodes.length === 0) return;
+        const firstR = rNodes[0];
+        const tNodes = getElementsByTagNameNSOrLocal(firstR, 't');
+        let targetT;
+        if (tNodes.length === 0) {
+            targetT = cellNode.ownerDocument.createElementNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'w:t');
+            firstR.appendChild(targetT);
+        } else {
+            targetT = tNodes[0];
         }
-        
-        let docXmlText = await zip.file("word/document.xml").async("string");
-        const xmlDoc = parser.parseFromString(docXmlText, "application/xml");
+        targetT.textContent = newText;
+        for (let i = 1; i < rNodes.length; i++) pNode.removeChild(rNodes[i]);
+        for (let i = 1; i < pNodes.length; i++) cellNode.removeChild(pNodes[i]);
+    }
 
-        function getElementsByTagNameNSOrLocal(element, localName) {
-            let list = element.getElementsByTagName('w:' + localName);
-            if (list.length === 0) list = element.getElementsByTagName(localName);
-            return Array.from(list);
-        }
+    function getCell(table, rowIndex, colIndex) {
+        if (!table) return null;
+        const rows = getElementsByTagNameNSOrLocal(table, 'tr');
+        if (rowIndex >= rows.length) return null;
+        const row = rows[rowIndex];
+        const cells = getElementsByTagNameNSOrLocal(row, 'tc');
+        if (colIndex >= cells.length) return null;
+        return cells[colIndex];
+    }
 
-        // Simpler, safer cell replacement
-        function replaceCellText(cellNode, newText) {
-            if (!cellNode) return;
-            const pNodes = getElementsByTagNameNSOrLocal(cellNode, 'p');
-            if (pNodes.length === 0) return;
-            
-            const pNode = pNodes[0];
-            const rNodes = getElementsByTagNameNSOrLocal(pNode, 'r');
-            if (rNodes.length === 0) return;
-            
-            const firstR = rNodes[0];
-            const tNodes = getElementsByTagNameNSOrLocal(firstR, 't');
-            let targetT;
-            if (tNodes.length === 0) {
-                targetT = cellNode.ownerDocument.createElementNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'w:t');
-                firstR.appendChild(targetT);
-            } else {
-                targetT = tNodes[0];
-            }
-            
-            targetT.textContent = newText;
-            
-            for (let i = 1; i < rNodes.length; i++) {
-                pNode.removeChild(rNodes[i]);
-            }
-            for (let i = 1; i < pNodes.length; i++) {
-                cellNode.removeChild(pNodes[i]);
-            }
-        }
+    const tables = getElementsByTagNameNSOrLocal(xmlDoc, 'tbl');
+    if (tables.length >= 3) {
+        // Table 0: System Information
+        replaceCellText(getCell(tables[0], 1, 4), voltage);
+        replaceCellText(getCell(tables[0], 2, 4), breaker);
+        replaceCellText(getCell(tables[0], 3, 4), parseFloat(isc).toFixed(1));
+        replaceCellText(getCell(tables[0], 4, 4), parseFloat(ecap).toFixed(1));
+        replaceCellText(getCell(tables[0], 5, 4), parseFloat(time).toFixed(2));
+        const workingDistStr = vNum <= 600 ? '455mm (18 in)' : '910mm (36 in)';
+        replaceCellText(getCell(tables[0], 6, 4), workingDistStr);
+        replaceCellText(getCell(tables[0], 7, 4), powerVal);
+        const cleanEnergyStr = energy.replace(' cal/cm²', '').trim();
+        replaceCellText(getCell(tables[0], 10, 4), cleanEnergyStr);
 
-        function getCell(table, rowIndex, colIndex) {
-            if (!table) return null;
-            const rows = getElementsByTagNameNSOrLocal(table, 'tr');
-            if (rowIndex >= rows.length) return null;
-            const row = rows[rowIndex];
-            const cells = getElementsByTagNameNSOrLocal(row, 'tc');
-            if (colIndex >= cells.length) return null;
-            return cells[colIndex];
-        }
+        // Table 1: Shock boundaries
+        replaceCellText(getCell(tables[1], 2, 3), arcBoundary);
+        replaceCellText(getCell(tables[1], 2, 5), limited);
+        replaceCellText(getCell(tables[1], 2, 6), restricted);
+        replaceCellText(getCell(tables[1], 3, 5), limitedMov);
 
-        const tables = getElementsByTagNameNSOrLocal(xmlDoc, 'tbl');
-        if (tables.length >= 3) {
-            // Table 0: System Information
-            replaceCellText(getCell(tables[0], 1, 4), voltage);
-            replaceCellText(getCell(tables[0], 2, 4), breaker);
-            replaceCellText(getCell(tables[0], 3, 4), parseFloat(isc).toFixed(1));
-            replaceCellText(getCell(tables[0], 4, 4), parseFloat(ecap).toFixed(1));
-            replaceCellText(getCell(tables[0], 5, 4), parseFloat(time).toFixed(2));
-            
-            const workingDistStr = vNum <= 600 ? "455mm (18 in)" : "910mm (36 in)";
-            replaceCellText(getCell(tables[0], 6, 4), workingDistStr);
-            replaceCellText(getCell(tables[0], 7, 4), powerVal);
-            
-            const cleanEnergyStr = energy.replace(' cal/cm²', '').trim();
-            replaceCellText(getCell(tables[0], 10, 4), cleanEnergyStr);
+        // Table 2: Warning Label
+        replaceCellText(getCell(tables[2], 4, 3), arcBoundary);
+        replaceCellText(getCell(tables[2], 4, 6), ': ' + gloves);
+        replaceCellText(getCell(tables[2], 5, 3), ppe);
+        replaceCellText(getCell(tables[2], 5, 6), ': ' + footwear);
+        replaceCellText(getCell(tables[2], 7, 3), shockV);
+        replaceCellText(getCell(tables[2], 8, 3), limited);
+        replaceCellText(getCell(tables[2], 8, 6), restricted);
+        replaceCellText(getCell(tables[2], 9, 3), equipId);
+        replaceCellText(getCell(tables[2], 9, 6), dateVal);
+        replaceCellText(getCell(tables[2], 10, 2), device);
+    }
 
-            // Table 1: Shock boundaries
-            replaceCellText(getCell(tables[1], 2, 3), arcBoundary);
-            replaceCellText(getCell(tables[1], 2, 5), limited);
-            replaceCellText(getCell(tables[1], 2, 6), restricted);
-            replaceCellText(getCell(tables[1], 3, 5), limitedMov);
+    let newXmlText = serializer.serializeToString(xmlDoc);
 
-            // Table 2: Warning Label (Etiqueta de Warning)
-            replaceCellText(getCell(tables[2], 4, 3), arcBoundary);
-            replaceCellText(getCell(tables[2], 4, 6), ': ' + gloves);
-            replaceCellText(getCell(tables[2], 5, 3), ppe);
-            replaceCellText(getCell(tables[2], 5, 6), ': ' + footwear);
-            replaceCellText(getCell(tables[2], 7, 3), shockV);
-            replaceCellText(getCell(tables[2], 8, 3), limited);
-            replaceCellText(getCell(tables[2], 8, 6), restricted);
-            replaceCellText(getCell(tables[2], 9, 3), equipId);
-            replaceCellText(getCell(tables[2], 9, 6), dateVal);
-            replaceCellText(getCell(tables[2], 10, 2), device);
-        }
+    // Fix yellow color
+    newXmlText = newXmlText.replace(/w:val="FFFF00"/gi, 'w:val="000000"');
 
-        let newXmlText = serializer.serializeToString(xmlDoc);
-
-        // 1. Fix yellow color: Replace FFFF00 (yellow) with 000000 (black) safely globally
-        newXmlText = newXmlText.replace(/w:val="FFFF00"/gi, 'w:val="000000"');
-
-        // 2. Replace (imagen PPE) placeholder with the Drawing XML
-        if (rIdPPE) {
-            const cx = 1008000; // 2.8 cm (reduced proportionally to decrease vertical space)
-            const cy = 2880000; // 8.0 cm (reduced from 10.0 cm / 3600000)
-            const drawingXml = `</w:t></w:r><w:r><w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+    // Replace (imagen PPE) placeholder
+    if (rIdPPE) {
+        const cx = 1008000;
+        const cy = 2880000;
+        const drawingXml = `</w:t></w:r><w:r><w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
   <wp:inline distT="0" distB="0" distL="0" distR="0">
     <wp:extent cx="${cx}" cy="${cy}"/>
     <wp:effectExtent l="0" t="0" r="0" b="0"/>
@@ -1146,98 +1116,50 @@ async function exportLabelToDocx() {
           </pic:nvPicPr>
           <pic:blipFill>
             <a:blip r:embed="${rIdPPE}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>
-            <a:stretch>
-              <a:fillRect/>
-            </a:stretch>
+            <a:stretch><a:fillRect/></a:stretch>
           </pic:blipFill>
           <pic:spPr>
             <a:xfrm>
               <a:off x="0" y="0"/>
               <a:ext cx="${cx}" cy="${cy}"/>
             </a:xfrm>
-            <a:prstGeom prst="rect">
-              <a:avLst/>
-            </a:prstGeom>
+            <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
           </pic:spPr>
         </pic:pic>
       </a:graphicData>
     </a:graphic>
   </wp:inline>
 </w:drawing></w:r><w:r><w:t>`;
-            newXmlText = newXmlText.replace(/\(imagen PPE\)/g, drawingXml);
-        } else {
-            newXmlText = newXmlText.replace(/\(imagen PPE\)/g, 'Imagen EPP no disponible');
-        }
+        newXmlText = newXmlText.replace(/\(imagen PPE\)/g, drawingXml);
+    } else {
+        newXmlText = newXmlText.replace(/\(imagen PPE\)/g, 'Imagen EPP no disponible');
+    }
 
-        zip.file("word/document.xml", newXmlText);
+    zip.file('word/document.xml', newXmlText);
 
-        const blobContent = await zip.generateAsync({
-            type: "blob",
-            mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        });
+    return await zip.generateAsync({
+        type: 'blob',
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    });
+}
 
-// Generar DOCX blob
-const blobContent = await zip.generateAsync({
-    type: "blob",
-    mimeType:
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-});
-
-// Crear contenedor oculto
-const previewContainer = document.createElement("div");
-
-previewContainer.style.position = "fixed";
-previewContainer.style.left = "-99999px";
-previewContainer.style.top = "0";
-previewContainer.style.width = "816px";
-previewContainer.style.background = "white";
-
-document.body.appendChild(previewContainer);
-
-// Renderizar DOCX como HTML
-await docx.renderAsync(blobContent, previewContainer);
-
-// Esperar render
-await new Promise(r => setTimeout(r, 1000));
-
-// Convertir HTML → canvas
-const canvas = await html2canvas(previewContainer, {
-    scale: 2,
-    useCORS: true
-});
-
-// Crear PDF
-const { jsPDF } = window.jspdf;
-
-const pdf = new jsPDF({
-    orientation: 'portrait',
-    unit: 'px',
-    format: [canvas.width, canvas.height]
-});
-
-const imgData = canvas.toDataURL("image/png");
-
-pdf.addImage(
-    imgData,
-    'PNG',
-    0,
-    0,
-    canvas.width,
-    canvas.height
-);
-
-// Descargar PDF
-const cleanEquipId =
-    equipId.replace(/[^a-zA-Z0-9]/g, '_') || 'report';
-
-pdf.save(
-    `Anexo_Calculadora_Arc_Flash_${cleanEquipId}.pdf`
-);
-
-// Limpiar
-document.body.removeChild(previewContainer);
-
-    } catch(e) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Descarga el DOCX generado con los datos de la UI
+// ─────────────────────────────────────────────────────────────────────────────
+async function exportLabelToDocx() {
+    try {
+        const blobContent = await buildArcFlashDocxBlob();
+        const url = URL.createObjectURL(blobContent);
+        const link = document.createElement('a');
+        const equipId = document.getElementById('lbl_equipId')?.textContent || 'report';
+        const cleanEquipId = equipId.replace(/[^a-zA-Z0-9]/g, '_') || 'report';
+        link.href = url;
+        link.download = `Anexo_Calculadora_Arc_Flash_${cleanEquipId}.docx`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    } catch (e) {
         console.error('Error generating DOCX:', e);
         alert('Error al generar el reporte en formato Word: ' + e.message);
     }

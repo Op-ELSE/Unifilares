@@ -753,8 +753,6 @@
     </div><!-- end overlay -->
     <!-- ===== END MODAL ===== -->
 
-    <!-- html2canvas for label capture -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <!-- PDF.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js";</script>
@@ -763,7 +761,13 @@
     <!-- DOCX Template Base64 Data -->
     <script src="docxTemplateData.js"></script>
     <script src="imagesData.js"></script>
-<script src="pdfTemplateHelper.js?v=3"></script>
+    <!-- docx-preview: renders DOCX → HTML (expone window.docx) -->
+    <script src="https://unpkg.com/docx-preview@0.3.6/dist/docx-preview.js"></script>
+    <!-- html2canvas: captura HTML como imagen -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- jsPDF: genera el PDF final -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="pdfTemplateHelper.js?v=4"></script>
     <script src="app.js"></script>
 </body>
 </html>
