@@ -1,10 +1,13 @@
 /**
- * pdfTemplateHelper.js
+ * pdfTemplateHelper.js  (v3)
  *
  * Provides window.pdfTemplateHelper.populateTemplate(inputs, eppImageBase64)
  *
- * Generates an Arc Flash report PDF using pdf-lib from the calculated inputs.
- * Returns a Uint8Array with the PDF bytes.
+ * Uses jsPDF + jspdf-autotable to generate a PDF that matches the
+ * Word (DOCX) template layout: System Information table, Shock Boundaries
+ * table with EPP image, and the WARNING label table.
+ *
+ * Returns an ArrayBuffer with the PDF bytes.
  */
 
 (function () {
@@ -17,326 +20,196 @@
         return dataUri;
     }
 
-    // ---- Utility: base64 → Uint8Array ----
-    function base64ToUint8Array(b64) {
-        var bin = atob(b64);
-        var arr = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-        return arr;
-    }
-
-    // ---- Utility: sanitize text for pdf-lib standard fonts ----
-    // Standard fonts (Helvetica, etc.) only support WinAnsi encoding.
-    // Replace unsupported characters to avoid encoding errors.
-    function sanitize(text) {
-        if (text === null || text === undefined) return '--';
-        var s = String(text);
-        // Replace common problematic characters
-        s = s.replace(/\u00B2/g, '2');      // ² → 2
-        s = s.replace(/\u2013/g, '-');       // – (en-dash) → -
-        s = s.replace(/\u2014/g, '-');       // — (em-dash) → -
-        s = s.replace(/\u2018/g, "'");       // ' → '
-        s = s.replace(/\u2019/g, "'");       // ' → '
-        s = s.replace(/\u201C/g, '"');       // " → "
-        s = s.replace(/\u201D/g, '"');       // " → "
-        s = s.replace(/\u2026/g, '...');     // … → ...
-        s = s.replace(/\u00E1/g, 'a');       // á → a
-        s = s.replace(/\u00E9/g, 'e');       // é → e
-        s = s.replace(/\u00ED/g, 'i');       // í → i
-        s = s.replace(/\u00F3/g, 'o');       // ó → o
-        s = s.replace(/\u00FA/g, 'u');       // ú → u
-        s = s.replace(/\u00F1/g, 'n');       // ñ → n
-        s = s.replace(/\u00C1/g, 'A');       // Á → A
-        s = s.replace(/\u00C9/g, 'E');       // É → E
-        s = s.replace(/\u00CD/g, 'I');       // Í → I
-        s = s.replace(/\u00D3/g, 'O');       // Ó → O
-        s = s.replace(/\u00DA/g, 'U');       // Ú → U
-        s = s.replace(/\u00D1/g, 'N');       // Ñ → N
-        s = s.replace(/\u00FC/g, 'u');       // ü → u
-        s = s.replace(/\u00DC/g, 'U');       // Ü → U
-        s = s.replace(/\u26A0/g, '!');       // ⚠ → !
-        // Remove any remaining non-WinAnsi characters (keep basic latin + latin-1 supplement)
-        s = s.replace(/[^\x20-\x7E\xA0-\xFF]/g, '');
-        return s || '--';
-    }
-
     // ---- Main: populateTemplate ----
     async function populateTemplate(inputs, eppImageBase64) {
-        console.log('pdfTemplateHelper: populateTemplate called with inputs:', Object.keys(inputs || {}));
+        console.log('pdfTemplateHelper v3: populateTemplate called');
 
-        // --- 1. Validate dependencies ---
-        if (typeof PDFLib === 'undefined') {
-            console.error('pdfTemplateHelper: PDFLib (pdf-lib) is not loaded.');
+        if (!window.jspdf) {
+            console.error('pdfTemplateHelper: jsPDF is not loaded.');
             return null;
         }
 
         try {
-            var pdfBytes = await buildPdfFromInputs(inputs || {}, eppImageBase64);
-            console.log('pdfTemplateHelper: PDF generated successfully, bytes:', pdfBytes ? pdfBytes.length : 0);
+            var pdfBytes = buildPdfFromInputs(inputs || {}, eppImageBase64);
+            console.log('pdfTemplateHelper v3: PDF generated, bytes:', pdfBytes ? pdfBytes.byteLength : 0);
             return pdfBytes;
         } catch (err) {
-            console.error('pdfTemplateHelper: FULL ERROR:', err);
-            console.error('pdfTemplateHelper: Error message:', err.message);
-            console.error('pdfTemplateHelper: Error stack:', err.stack);
+            console.error('pdfTemplateHelper v3: FULL ERROR:', err);
+            console.error('pdfTemplateHelper v3: Error message:', err.message);
+            console.error('pdfTemplateHelper v3: Error stack:', err.stack);
             return null;
         }
     }
 
-    // ---- Build a PDF from inputs using pdf-lib ----
-    async function buildPdfFromInputs(inputs, eppImageBase64) {
-        console.log('pdfTemplateHelper: buildPdfFromInputs starting...');
+    // ---- Build a PDF matching the Word template layout ----
+    function buildPdfFromInputs(inputs, eppImageBase64) {
+        var jsPDF = window.jspdf.jsPDF;
+        var doc = new jsPDF('p', 'mm', 'letter');
 
-        var PDFDocument = PDFLib.PDFDocument;
-        var rgb = PDFLib.rgb;
-        var StandardFonts = PDFLib.StandardFonts;
+        // ---- Collect values with fallback ----
+        var voltage       = inputs.systemVoltage || '--';
+        var breaker       = inputs.upstreamBreaker || '--';
+        var isc           = inputs.shortCircuit || '--';
+        var ecap          = inputs.energyStorage || '--';
+        var time          = inputs.openingTime || '--';
+        var workDist      = inputs.workingDistance || '--';
+        var power         = inputs.powerForArc || '--';
+        var energy        = inputs.incidentEnergy || '--';
+        var arcBoundary   = inputs.arcFlashBoundary || inputs.arcFlashApproach || '--';
+        var limited       = inputs.limitedApproach || '--';
+        var restricted    = inputs.restrictedApproach || inputs.restrictedApproach2 || '--';
+        var exposed       = inputs.exposedMovable || inputs.limitsApproach || '--';
+        var gloves        = inputs.glove || '--';
+        var ppe           = inputs.requiredPPE || '--';
+        var footwear      = inputs.footwear || '--';
+        var shockV        = inputs.shockHazard || '--';
+        var equipId       = inputs.busEquipmentId || '--';
+        var device        = inputs.protectiveDevice || '--';
+        var dateVal       = inputs.assessmentDate || '--';
 
-        var pdfDoc = await PDFDocument.create();
-        console.log('pdfTemplateHelper: PDFDocument created');
+        // =====================================================
+        //  TABLE 1: System Information
+        // =====================================================
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Anexo 01  System Information', 15, 20);
 
-        var helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        var helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-        console.log('pdfTemplateHelper: Fonts embedded');
-
-        var pageWidth = 612;   // Letter
-        var pageHeight = 792;
-        var margin = 40;
-
-        // ---- Page 1: System Information ----
-        var page = pdfDoc.addPage([pageWidth, pageHeight]);
-        var y = pageHeight - margin;
-        console.log('pdfTemplateHelper: Page 1 created');
-
-        // Title
-        page.drawText('Anexo 01 - System Information', {
-            x: margin, y: y, size: 16, font: helveticaBold, color: rgb(0, 0, 0)
+        doc.autoTable({
+            startY: 25,
+            theme: 'grid',
+            headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+            bodyStyles: { textColor: [0, 0, 0] },
+            head: [[{ content: 'System Information', colSpan: 4, styles: { halign: 'center' } }]],
+            body: [
+                ['System Voltage', voltage, 'V', ''],
+                ['Upstream Overcurrent Breaker (device)', breaker, 'A', ''],
+                ['Short Circuit Current (Isc)', parseFloat(isc).toFixed(1), 'kA', ''],
+                ['Energy Storage (e.g. Capacitors)', parseFloat(ecap).toFixed(1), 'kJ', ''],
+                ['Opening Time', parseFloat(time).toFixed(2), 'Sec', ''],
+                ['Working Distance (From the arc source)', workDist, '(*)', ''],
+                ['Power - For Arc Flash prot. Boundaries', power, 'kVA (*)', ''],
+                ['Incident Energy', energy, 'cal/cm\u00B2', '']
+            ],
+            columnStyles: {
+                0: { cellWidth: 90 },
+                1: { cellWidth: 35, fontStyle: 'bold', halign: 'right' },
+                2: { cellWidth: 30 },
+                3: { cellWidth: 25 }
+            }
         });
-        y -= 30;
-        console.log('pdfTemplateHelper: Title drawn');
 
-        // System Info table rows
-        var sysRows = [
-            ['System Voltage', sanitize(inputs.systemVoltage) + ' V'],
-            ['Upstream Overcurrent Breaker', sanitize(inputs.upstreamBreaker) + ' A'],
-            ['Short Circuit Current (Isc)', sanitize(inputs.shortCircuit) + ' kA'],
-            ['Energy Storage (Capacitors)', sanitize(inputs.energyStorage) + ' kJ'],
-            ['Opening Time', sanitize(inputs.openingTime) + ' Sec'],
-            ['Working Distance', sanitize(inputs.workingDistance)],
-            ['Power - Arc Flash Boundaries', sanitize(inputs.powerForArc) + ' kVA'],
-            ['Incident Energy', sanitize(inputs.incidentEnergy) + ' cal/cm2']
-        ];
+        // =====================================================
+        //  Section: Electrical Safety Analysis
+        // =====================================================
+        var headingY = doc.lastAutoTable.finalY + 12;
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('An\u00E1lisis de seguridad el\u00E9ctrica', 15, headingY);
 
-        y = drawTable(page, sysRows, margin, y, pageWidth - margin * 2, helvetica, helveticaBold);
-        y -= 25;
-        console.log('pdfTemplateHelper: System info table drawn');
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Frontera de protecci\u00F3n de arco y choque el\u00E9ctrico Distancias para instalaci\u00F3n de barricada', 15, headingY + 6);
+        doc.text('durante verificaci\u00F3n de Seven Steps y se\u00F1alizaci\u00F3n perimetral', 15, headingY + 11);
 
-        // Section heading
-        page.drawText('Analisis de seguridad electrica', {
-            x: margin, y: y, size: 14, font: helveticaBold, color: rgb(0, 0, 0)
-        });
-        y -= 15;
-        page.drawText('Frontera de proteccion de arco y choque electrico', {
-            x: margin, y: y, size: 9, font: helvetica, color: rgb(0.3, 0.3, 0.3)
-        });
-        y -= 12;
-        page.drawText('According to NFPA70E: Table 130.4(E)(a)', {
-            x: margin, y: y, size: 8, font: helvetica, color: rgb(0.4, 0.4, 0.4)
-        });
-        y -= 25;
-        console.log('pdfTemplateHelper: Headings drawn');
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'italic');
+        doc.text('According to NFPA70E: Table 130.4(E)(a)', 15, headingY + 17);
 
-        // Boundary rows
-        var boundaryRows = [
-            ['Arc Flash Boundary', sanitize(inputs.arcFlashBoundary)],
-            ['Limited Approach', sanitize(inputs.limitedApproach)],
-            ['Restricted Approach', sanitize(inputs.restrictedApproach2)],
-            ['Arc Flash Approach', sanitize(inputs.arcFlashApproach)]
-        ];
-        y = drawTable(page, boundaryRows, margin, y, pageWidth - margin * 2, helvetica, helveticaBold);
-        y -= 20;
-        console.log('pdfTemplateHelper: Boundary table drawn');
-
-        // ---- EPP Image (if available) ----
+        // =====================================================
+        //  EPP (PPE) Image — left side
+        // =====================================================
+        var eppImgW = 3.5;
+        var eppImgH = 10;
         if (eppImageBase64) {
-            console.log('pdfTemplateHelper: Attempting to embed EPP image...');
             try {
-                var imgRawData = getBase64Data(eppImageBase64);
-                if (imgRawData) {
-                    var imgBytes = base64ToUint8Array(imgRawData);
-                    var embeddedImage = null;
-                    try {
-                        embeddedImage = await pdfDoc.embedPng(imgBytes);
-                        console.log('pdfTemplateHelper: Image embedded as PNG');
-                    } catch (pngErr) {
-                        console.warn('pdfTemplateHelper: PNG failed, trying JPEG:', pngErr.message);
-                        try {
-                            embeddedImage = await pdfDoc.embedJpg(imgBytes);
-                            console.log('pdfTemplateHelper: Image embedded as JPEG');
-                        } catch (jpgErr) {
-                            console.warn('pdfTemplateHelper: JPEG also failed:', jpgErr.message);
-                        }
-                    }
-
-                    if (embeddedImage) {
-                        var origW = embeddedImage.width;
-                        var origH = embeddedImage.height;
-                        var maxW = 150;
-                        var maxH = 150;
-                        var scale = Math.min(maxW / origW, maxH / origH, 1);
-                        var drawW = origW * scale;
-                        var drawH = origH * scale;
-
-                        if (y - drawH < margin) {
-                            page = pdfDoc.addPage([pageWidth, pageHeight]);
-                            y = pageHeight - margin;
-                        }
-                        page.drawImage(embeddedImage, {
-                            x: margin, y: y - drawH, width: drawW, height: drawH
-                        });
-                        y -= drawH + 15;
-                        console.log('pdfTemplateHelper: Image placed on page');
-                    }
+                var imgData = getBase64Data(eppImageBase64);
+                if (imgData) {
+                    doc.addImage(imgData, 'PNG', 15, headingY + 22, eppImgW, eppImgH);
                 }
-            } catch (imgErr) {
-                console.warn('pdfTemplateHelper: Image embedding skipped due to error:', imgErr.message);
+            } catch (e) {
+                console.warn('pdfTemplateHelper: EPP img add failed:', e);
+            }
+        }
+
+        // =====================================================
+        //  TABLE 2: Shock Boundaries (right of EPP image)
+        // =====================================================
+        doc.autoTable({
+            startY: headingY + 22,
+            margin: { left: 60 },
+            theme: 'grid',
+            headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+            head: [['Shock Protection Approach Boundaries and Arc Flash Boundary', '', '']],
+            body: [
+                ['Arc Flash Boundary', 'Limited Approach Boundary', 'Restricted Approach Boundary'],
+                [arcBoundary, limited, restricted],
+                [exposed, '', '']
+            ]
+        });
+
+        // Shock diagram image (if available)
+        var shockImgData = (window.IMAGES_DATA && window.IMAGES_DATA['shock']) ? window.IMAGES_DATA['shock'] : null;
+        if (shockImgData) {
+            try {
+                var sImgData = getBase64Data(shockImgData);
+                var imgW = 141;
+                var imgH = imgW * (585 / 1201);
+                doc.addImage(sImgData, 'PNG', 60, doc.lastAutoTable.finalY + 5, imgW, imgH);
+
+                var nextY = Math.max(headingY + 22 + eppImgH, doc.lastAutoTable.finalY + imgH + 10);
+                doc.autoTable({ startY: nextY, body: [] });
+            } catch (e) {
+                console.warn('pdfTemplateHelper: Shock img failed:', e);
+                var nextY2 = Math.max(headingY + 22 + eppImgH, doc.lastAutoTable.finalY + 10);
+                doc.autoTable({ startY: nextY2, body: [] });
             }
         } else {
-            console.log('pdfTemplateHelper: No EPP image provided');
+            var nextY3 = Math.max(headingY + 22 + eppImgH, doc.lastAutoTable.finalY + 10);
+            doc.autoTable({ startY: nextY3, body: [] });
         }
 
-        // ---- WARNING LABEL section ----
-        if (y < 300) {
-            page = pdfDoc.addPage([pageWidth, pageHeight]);
-            y = pageHeight - margin;
-            console.log('pdfTemplateHelper: Added page 2 for warning label');
+        // =====================================================
+        //  TABLE 3: WARNING LABEL
+        // =====================================================
+        var lblY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : 150;
+        if (lblY > 230) {
+            doc.addPage();
         }
 
-        // Warning banner (orange)
-        var bannerH = 30;
-        var contentW = pageWidth - margin * 2;
-        page.drawRectangle({
-            x: margin, y: y - bannerH, width: contentW, height: bannerH,
-            color: rgb(0.93, 0.55, 0)
-        });
-        page.drawText('WARNING', {
-            x: pageWidth / 2 - 40, y: y - 22, size: 18, font: helveticaBold, color: rgb(0, 0, 0)
-        });
-        y -= bannerH + 5;
-
-        page.drawText('Arc Flash & Shock Hazard - Appropriate PPE Required', {
-            x: margin + 10, y: y - 12, size: 11, font: helveticaBold, color: rgb(0, 0, 0)
-        });
-        y -= 25;
-        console.log('pdfTemplateHelper: Warning banner drawn');
-
-        // Dark header bar
-        var darkBarH = 18;
-        page.drawRectangle({
-            x: margin, y: y - darkBarH, width: contentW, height: darkBarH,
-            color: rgb(0.16, 0.16, 0.16)
-        });
-        page.drawText('ARC FLASH PROTECTION BOUNDARY AND REQUIRED PPE - ABB ES Calculator V1.6a', {
-            x: margin + 5, y: y - 13, size: 7, font: helveticaBold, color: rgb(1, 1, 1)
-        });
-        y -= darkBarH + 5;
-
-        // Warning label data
-        drawLabelRow(page, margin, y, 'Arc Flash Boundary:', sanitize(inputs.arcFlashBoundary),
-            'Glove Class / CAT:', sanitize(inputs.glove), helvetica, helveticaBold);
-        y -= 18;
-
-        drawLabelRow(page, margin, y, 'Required PPE:', sanitize(inputs.requiredPPE),
-            'Footwear:', sanitize(inputs.footwear), helvetica, helveticaBold);
-        y -= 25;
-        console.log('pdfTemplateHelper: PPE rows drawn');
-
-        // Shock section dark bar
-        page.drawRectangle({
-            x: margin, y: y - darkBarH, width: contentW, height: darkBarH,
-            color: rgb(0.16, 0.16, 0.16)
-        });
-        page.drawText('SHOCK HAZARD PROTECTION BOUNDARIES', {
-            x: margin + 5, y: y - 13, size: 8, font: helveticaBold, color: rgb(1, 1, 1)
-        });
-        y -= darkBarH + 5;
-
-        // Shock rows
-        drawLabelRow(page, margin, y, 'Shock Hazard:', sanitize(inputs.shockHazard),
-            'Limited Approach:', sanitize(inputs.limitedApproach), helvetica, helveticaBold);
-        y -= 18;
-
-        drawLabelRow(page, margin, y, 'Bus/Equipment ID:', sanitize(inputs.busEquipmentId),
-            'Restricted Approach:', sanitize(inputs.restrictedApproach2), helvetica, helveticaBold);
-        y -= 18;
-
-        drawLabelRow(page, margin, y, 'Protective Device:', sanitize(inputs.protectiveDevice),
-            'Assessment Date:', sanitize(inputs.assessmentDate), helvetica, helveticaBold);
-        y -= 25;
-        console.log('pdfTemplateHelper: Shock rows drawn');
-
-        // Disclaimer
-        page.drawText('THIS LABEL IS FOR TEMPORARY USE AND MUST BE REMOVED AFTER SERVICE IS COMPLETED', {
-            x: margin + 15, y: y, size: 7, font: helvetica, color: rgb(0.5, 0.5, 0.5)
-        });
-        y -= 12;
-        page.drawText('IMPORTANT: This label was generated using estimated values.', {
-            x: margin + 5, y: y, size: 6, font: helvetica, color: rgb(0.5, 0.5, 0.5)
-        });
-        console.log('pdfTemplateHelper: Disclaimer drawn');
-
-        // --- Serialize ---
-        console.log('pdfTemplateHelper: Saving PDF...');
-        var pdfBytes = await pdfDoc.save();
-        console.log('pdfTemplateHelper: PDF saved, bytes:', pdfBytes.length);
-        return pdfBytes;
-    }
-
-    // ---- Draw a 4-column label row ----
-    function drawLabelRow(page, margin, y, label1, value1, label2, value2, font, boldFont) {
-        var rgbFn = PDFLib.rgb;
-        page.drawText(sanitize(label1), { x: margin + 5, y: y - 12, size: 9, font: boldFont, color: rgbFn(0, 0, 0) });
-        page.drawText(sanitize(value1), { x: margin + 130, y: y - 12, size: 9, font: font, color: rgbFn(0, 0, 0.55) });
-        page.drawText(sanitize(label2), { x: margin + 270, y: y - 12, size: 9, font: boldFont, color: rgbFn(0, 0, 0) });
-        page.drawText(sanitize(value2), { x: margin + 400, y: y - 12, size: 9, font: font, color: rgbFn(0, 0, 0.55) });
-    }
-
-    // ---- Draw a simple two-column table ----
-    function drawTable(page, rows, x, y, totalWidth, font, boldFont) {
-        var rowHeight = 18;
-        var labelWidth = totalWidth * 0.55;
-        var fontSize = 9;
-        var rgbFn = PDFLib.rgb;
-
-        for (var i = 0; i < rows.length; i++) {
-            var rowY = y - (i + 1) * rowHeight;
-
-            // Alternating background
-            if (i % 2 === 0) {
-                page.drawRectangle({
-                    x: x, y: rowY, width: totalWidth, height: rowHeight,
-                    color: rgbFn(0.96, 0.96, 0.96)
-                });
+        doc.autoTable({
+            startY: doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : 20,
+            theme: 'grid',
+            headStyles: {
+                fillColor: [237, 139, 0],
+                textColor: [0, 0, 0],
+                fontStyle: 'bold',
+                fontSize: 16,
+                halign: 'center'
+            },
+            bodyStyles: { textColor: [0, 0, 0], fontSize: 10 },
+            head: [[{ content: '\u26A0 WARNING', colSpan: 4 }]],
+            body: [
+                [{ content: 'Arc Flash & Shock Hazard\nAppropriate PPE Required', colSpan: 4, styles: { halign: 'center', fontStyle: 'bold', fontSize: 14 } }],
+                [{ content: 'ARC FLASH PROTECTION BOUNDARY AND REQUIRED PPE ABB Electrical Safety Calculator V1.6a Jan. 2024', colSpan: 4, styles: { fillColor: [40, 40, 40], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' } }],
+                ['Arc Flash boundary:', arcBoundary, 'Glove Class/ CAT:', ': ' + gloves],
+                ['Required PPE:', ppe, 'Footwear:', ': ' + footwear],
+                [{ content: 'SHOCK HAZARD PROTECTION BOUNDARIES', colSpan: 4, styles: { fillColor: [40, 40, 40], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' } }],
+                ['Shock Hazard:', shockV, 'Limited Approach:', limited],
+                ['Bus/Equipment ID:', equipId, 'Restricted Approach:', restricted],
+                ['Protective Device (Upstream):', device, 'Assessment Date:', dateVal],
+                [{ content: 'THIS LABEL IS FOR TEMPORARY USE AND MUST BE REMOVED AFTER SERVICE IS COMPLETED', colSpan: 4, styles: { halign: 'center', fontStyle: 'italic', fontSize: 8, textColor: [120, 120, 120] } }],
+                [{ content: 'IMPORTANT: This label was generated using estimated values and may be used in the absence of a formal arc flash risk assessment.', colSpan: 4, styles: { halign: 'center', fontSize: 8, textColor: [120, 120, 120] } }]
+            ],
+            columnStyles: {
+                0: { fontStyle: 'bold', cellWidth: 48 },
+                1: { textColor: [0, 0, 139], fontStyle: 'bold' },
+                2: { fontStyle: 'bold', cellWidth: 48 },
+                3: { textColor: [0, 0, 139], fontStyle: 'bold' }
             }
+        });
 
-            // Border lines (top and bottom of each row)
-            page.drawLine({
-                start: { x: x, y: rowY },
-                end: { x: x + totalWidth, y: rowY },
-                thickness: 0.5,
-                color: rgbFn(0.8, 0.8, 0.8)
-            });
-
-            // Label
-            page.drawText(sanitize(rows[i][0]), {
-                x: x + 5, y: rowY + 5, size: fontSize, font: boldFont, color: rgbFn(0, 0, 0)
-            });
-
-            // Value
-            page.drawText(sanitize(rows[i][1]), {
-                x: x + labelWidth + 5, y: rowY + 5, size: fontSize, font: font, color: rgbFn(0, 0, 0.55)
-            });
-        }
-
-        return y - rows.length * rowHeight;
+        console.log('pdfTemplateHelper v3: All tables drawn, generating output...');
+        return doc.output('arraybuffer');
     }
 
     // ---- Expose on window ----
@@ -344,6 +217,6 @@
         populateTemplate: populateTemplate
     };
 
-    console.log('pdfTemplateHelper: loaded and ready (v2)');
+    console.log('pdfTemplateHelper: loaded and ready (v3)');
 
 })();
