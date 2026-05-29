@@ -12,39 +12,7 @@ function initIcons() {
         lucide.createIcons();
     }
 }
-
-// Initialize sidebar accordion behavior
-function initSidebarAccordion() {
-    const toggleButtons = document.querySelectorAll('.toggle-btn');
-    toggleButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            const isExpanded = btn.getAttribute('aria-expanded') === 'true';
-            // Toggle aria attribute
-            btn.setAttribute('aria-expanded', (!isExpanded).toString());
-            // Update icon
-            const icon = btn.querySelector('i[data-lucide]');
-            if (icon) {
-                const newIcon = isExpanded ? 'chevron-right' : 'chevron-down';
-                icon.setAttribute('data-lucide', newIcon);
-                if (window.lucide) lucide.createIcons();
-            }
-            // Toggle the sibling .section-content
-            const next = btn.nextElementSibling;
-            if (next && next.classList.contains('section-content')) {
-                if (isExpanded) {
-                    next.classList.add('hidden');
-                } else {
-                    next.classList.remove('hidden');
-                }
-            }
-        });
-    });
-}
-
-// Call initialization functions
 initIcons();
-initSidebarAccordion();
-// initIcons(); // moved above with call after initSidebarAccordion
 
 // Elements
 const dropzone = document.getElementById('dropzone');
