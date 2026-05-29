@@ -718,59 +718,59 @@ if (btnExportArcDocx) {
     btnExportArcDocx.addEventListener('click', exportLabelToDocx);
 }
 
-// Export label to PDF button — genera el mismo DOCX y lo convierte a PDF vía docx-preview + html2canvas + jsPDF
+// Export label to PDF button — envía el DOCX al backend Node.js → LibreOffice → PDF real
+const BACKEND_URL = 'http://localhost:3000/convert';
+
 const btnExportArcPdf = document.getElementById('btnExportArcPdf');
 if (btnExportArcPdf) {
     btnExportArcPdf.addEventListener('click', async () => {
+        const originalContent = btnExportArcPdf.innerHTML;
+        btnExportArcPdf.disabled = true;
+        btnExportArcPdf.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Generando PDF...`;
+        if (window.lucide) window.lucide.createIcons();
+
         try {
-            // Generar mismo DOCX
+            // 1. Generar el DOCX con los datos actuales de la UI
             const blobContent = await buildArcFlashDocxBlob();
 
-            // Crear contenedor oculto
-            const previewContainer = document.createElement('div');
-            previewContainer.style.position = 'fixed';
-            previewContainer.style.left = '-99999px';
-            previewContainer.style.top = '0';
-            previewContainer.style.width = '816px';
-            previewContainer.style.background = 'white';
-            document.body.appendChild(previewContainer);
+            // 2. Crear FormData con el DOCX
+            const formData = new FormData();
+            formData.append('file', blobContent, 'reporte.docx');
 
-            // Renderizar DOCX como HTML
-            await docx.renderAsync(blobContent, previewContainer);
-
-            // Esperar render
-            await new Promise(r => setTimeout(r, 1000));
-
-            // Screenshot
-            const pdfCanvas = await html2canvas(previewContainer, {
-                scale: 2,
-                useCORS: true
+            // 3. Enviar al backend Node.js/LibreOffice
+            const response = await fetch(BACKEND_URL, {
+                method: 'POST',
+                body: formData
             });
 
-            // Crear PDF
-            const { jsPDF } = window.jspdf;
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'px',
-                format: [pdfCanvas.width, pdfCanvas.height]
-            });
-            const imgData = pdfCanvas.toDataURL('image/png');
-            pdf.addImage(imgData, 'PNG', 0, 0, pdfCanvas.width, pdfCanvas.height);
+            if (!response.ok) {
+                const errJson = await response.json().catch(() => ({}));
+                throw new Error(errJson.error || `Error del servidor: ${response.status}`);
+            }
 
-            // Nombre
-            const equipId = document.getElementById('lbl_equipId')?.textContent || 'report';
+            // 4. Descargar el PDF resultante
+            const pdfBlob = await response.blob();
+            const url     = URL.createObjectURL(pdfBlob);
+            const link    = document.createElement('a');
+
+            const equipId     = document.getElementById('lbl_equipId')?.textContent || 'report';
             const cleanEquipId = equipId.replace(/[^a-zA-Z0-9]/g, '_') || 'report';
 
-            // Descargar PDF
-            pdf.save(`Anexo_Calculadora_Arc_Flash_${cleanEquipId}.pdf`);
-
-            // Limpiar
-            document.body.removeChild(previewContainer);
+            link.href     = url;
+            link.download = `Anexo_Calculadora_Arc_Flash_${cleanEquipId}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
 
         } catch (err) {
-            console.error(err);
-            alert('Error generando PDF: ' + err.message);
+            console.error('[PDF Export]', err);
+            alert('Error generando PDF:\n' + err.message + '\n\n¿Está corriendo el servidor?\n  node server.js');
         }
+
+        btnExportArcPdf.disabled = false;
+        btnExportArcPdf.innerHTML = originalContent;
+        if (window.lucide) window.lucide.createIcons();
     });
 }
 
