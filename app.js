@@ -1176,15 +1176,66 @@ async function exportLabelToDocx() {
             mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         });
 
-        const url = URL.createObjectURL(blobContent);
-        const link = document.createElement("a");
-        link.href = url;
-        const cleanEquipId = equipId.replace(/[^a-zA-Z0-9]/g, '_') || 'report';
-        link.download = `Anexo_Calculadora_Arc_Flash_${cleanEquipId}.docx`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+// Generar DOCX blob
+const blobContent = await zip.generateAsync({
+    type: "blob",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+});
+
+// Crear contenedor oculto
+const previewContainer = document.createElement("div");
+
+previewContainer.style.position = "fixed";
+previewContainer.style.left = "-99999px";
+previewContainer.style.top = "0";
+previewContainer.style.width = "816px";
+previewContainer.style.background = "white";
+
+document.body.appendChild(previewContainer);
+
+// Renderizar DOCX como HTML
+await docx.renderAsync(blobContent, previewContainer);
+
+// Esperar render
+await new Promise(r => setTimeout(r, 1000));
+
+// Convertir HTML → canvas
+const canvas = await html2canvas(previewContainer, {
+    scale: 2,
+    useCORS: true
+});
+
+// Crear PDF
+const { jsPDF } = window.jspdf;
+
+const pdf = new jsPDF({
+    orientation: 'portrait',
+    unit: 'px',
+    format: [canvas.width, canvas.height]
+});
+
+const imgData = canvas.toDataURL("image/png");
+
+pdf.addImage(
+    imgData,
+    'PNG',
+    0,
+    0,
+    canvas.width,
+    canvas.height
+);
+
+// Descargar PDF
+const cleanEquipId =
+    equipId.replace(/[^a-zA-Z0-9]/g, '_') || 'report';
+
+pdf.save(
+    `Anexo_Calculadora_Arc_Flash_${cleanEquipId}.pdf`
+);
+
+// Limpiar
+document.body.removeChild(previewContainer);
 
     } catch(e) {
         console.error('Error generating DOCX:', e);
