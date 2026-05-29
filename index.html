@@ -14,6 +14,37 @@
     <!-- Lucide Icons via unpkg -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Radar symbol icon circle for sidebar buttons */
+        .symbol-icon-circle {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        /* Items list entry hover state */
+        .items-list-entry {
+            transition: background 0.15s, border-color 0.15s, transform 0.1s;
+        }
+        .items-list-entry:hover {
+            transform: translateX(2px);
+        }
+        .items-list-entry:active {
+            transform: translateX(0);
+        }
+
+        /* Clamp 2 lines for descriptions */
+        .line-clamp-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+    </style>
     <script>
         tailwind.config = {
             theme: {
@@ -194,59 +225,64 @@
                     
                     <!-- Symbols Grid -->
                     <div class="grid grid-cols-2 gap-3">
-                        <button class="add-symbol border border-gray-200 p-3 rounded hover:border-abbred hover:text-abbred transition flex flex-col items-center gap-2" data-type="bloqueo" draggable="true">
-                            <div class="w-8 h-8 flex items-center justify-center">
-                                <svg class="w-8 h-8" viewBox="0 0 50 50">
-                                    <path d="M 15 20 L 15 10 A 10 10 0 0 1 35 10 L 35 20" fill="none" stroke="#71717a" stroke-width="4" />
-                                    <rect x="10" y="20" width="30" height="30" rx="3" ry="3" fill="#FF000F" />
-                                    <circle cx="25" cy="31" r="3" fill="white" />
-                                    <line x1="25" y1="34" x2="25" y2="41" stroke="white" stroke-width="2" />
+                        <!-- Bloqueo LOTO -->
+                        <button class="add-symbol border border-gray-200 p-3 rounded-xl hover:border-abbred hover:shadow-md transition-all flex flex-col items-center gap-2 bg-white" data-type="bloqueo" draggable="true">
+                            <div class="symbol-icon-circle" style="background: linear-gradient(135deg, #FF000F, #cc0000); box-shadow: 0 4px 14px rgba(255,0,15,0.45);">
+                                <svg class="w-6 h-6" viewBox="0 0 50 50">
+                                    <path d="M 15 20 L 15 10 A 10 10 0 0 1 35 10 L 35 20" fill="none" stroke="rgba(255,255,255,0.8)" stroke-width="5" />
+                                    <rect x="10" y="20" width="30" height="30" rx="4" ry="4" fill="white" opacity="0.25" />
+                                    <circle cx="25" cy="31" r="3.5" fill="white" />
+                                    <line x1="25" y1="34" x2="25" y2="42" stroke="white" stroke-width="2.5" />
                                 </svg>
                             </div>
-                            <span class="text-xs font-semibold text-center leading-tight">Bloqueo<br/>LOTO</span>
+                            <span class="text-xs font-bold text-center leading-tight text-gray-700">Bloqueo<br/>LOTO</span>
                         </button>
-                        <button class="add-symbol border border-gray-200 p-3 rounded hover:border-abbred hover:text-abbred transition flex flex-col items-center gap-2" data-type="aterramiento" draggable="true">
-                            <div class="w-8 h-8 flex items-center justify-center">
-                                <svg class="w-8 h-8" viewBox="0 0 40 50">
-                                    <line x1="20" y1="0" x2="20" y2="30" stroke="#b45309" stroke-width="3" />
-                                    <line x1="0" y1="30" x2="40" y2="30" stroke="#b45309" stroke-width="3" />
-                                    <line x1="8" y1="38" x2="32" y2="38" stroke="#b45309" stroke-width="3" />
-                                    <line x1="16" y1="46" x2="24" y2="46" stroke="#b45309" stroke-width="3" />
+                        <!-- Aterramiento -->
+                        <button class="add-symbol border border-gray-200 p-3 rounded-xl hover:border-abbred hover:shadow-md transition-all flex flex-col items-center gap-2 bg-white" data-type="aterramiento" draggable="true">
+                            <div class="symbol-icon-circle" style="background: linear-gradient(135deg, #d97706, #b45309); box-shadow: 0 4px 14px rgba(180,83,9,0.45);">
+                                <svg class="w-6 h-6" viewBox="0 0 40 50">
+                                    <line x1="20" y1="2" x2="20" y2="28" stroke="white" stroke-width="3.5" />
+                                    <line x1="2" y1="28" x2="38" y2="28" stroke="white" stroke-width="3.5" />
+                                    <line x1="8" y1="36" x2="32" y2="36" stroke="white" stroke-width="3.5" />
+                                    <line x1="15" y1="44" x2="25" y2="44" stroke="white" stroke-width="3.5" />
                                 </svg>
                             </div>
-                            <span class="text-xs font-semibold text-center leading-tight">Tierra</span>
+                            <span class="text-xs font-bold text-center leading-tight text-gray-700">Tierra</span>
                         </button>
-                        <button class="add-symbol border border-gray-200 p-3 rounded hover:border-abbred hover:text-abbred transition flex flex-col items-center gap-2" data-type="retorno" draggable="true">
-                            <div class="w-8 h-8 flex items-center justify-center">
-                                <svg class="w-8 h-8" viewBox="0 0 40 40">
-                                    <path d="M 30 10 L 20 10 A 10 10 0 0 0 20 30 L 35 30" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-                                    <polyline points="28,23 35,30 28,37" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                        <!-- Retorno -->
+                        <button class="add-symbol border border-gray-200 p-3 rounded-xl hover:border-abbred hover:shadow-md transition-all flex flex-col items-center gap-2 bg-white" data-type="retorno" draggable="true">
+                            <div class="symbol-icon-circle" style="background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 4px 14px rgba(16,185,129,0.45);">
+                                <svg class="w-6 h-6" viewBox="0 0 40 40">
+                                    <path d="M 30 10 L 20 10 A 10 10 0 0 0 20 30 L 35 30" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+                                    <polyline points="28,23 35,30 28,37" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
                                 </svg>
                             </div>
-                            <span class="text-xs font-semibold text-center leading-tight">Retorno</span>
+                            <span class="text-xs font-bold text-center leading-tight text-gray-700">Retorno</span>
                         </button>
-                        <button class="add-symbol border border-gray-200 p-3 rounded hover:border-abbred hover:text-abbred transition flex flex-col items-center gap-2" data-type="aterrizaje_temporal" draggable="true">
-                            <div class="w-8 h-8 flex items-center justify-center">
-                                <svg class="w-8 h-8" viewBox="0 0 40 50">
-                                    <line x1="20" y1="10" x2="20" y2="30" stroke="#d97706" stroke-width="3" />
-                                    <line x1="0" y1="30" x2="40" y2="30" stroke="#d97706" stroke-width="3" />
-                                    <line x1="8" y1="38" x2="32" y2="38" stroke="#d97706" stroke-width="3" />
-                                    <line x1="16" y1="46" x2="24" y2="46" stroke="#d97706" stroke-width="3" />
-                                    <path d="M 15 10 A 5 5 0 0 1 25 10 L 25 5" fill="none" stroke="#d97706" stroke-width="3" />
+                        <!-- Aterrizaje Temporal -->
+                        <button class="add-symbol border border-gray-200 p-3 rounded-xl hover:border-abbred hover:shadow-md transition-all flex flex-col items-center gap-2 bg-white" data-type="aterrizaje_temporal" draggable="true">
+                            <div class="symbol-icon-circle" style="background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 4px 14px rgba(245,158,11,0.45);">
+                                <svg class="w-6 h-6" viewBox="0 0 40 50">
+                                    <line x1="20" y1="10" x2="20" y2="28" stroke="white" stroke-width="3.5" />
+                                    <line x1="2" y1="28" x2="38" y2="28" stroke="white" stroke-width="3.5" />
+                                    <line x1="8" y1="36" x2="32" y2="36" stroke="white" stroke-width="3.5" />
+                                    <line x1="15" y1="44" x2="25" y2="44" stroke="white" stroke-width="3.5" />
+                                    <path d="M 14 10 A 6 6 0 0 1 26 10 L 26 4" fill="none" stroke="white" stroke-width="3.5" />
                                 </svg>
                             </div>
-                            <span class="text-xs font-semibold text-center leading-tight">Aterrizaje<br/>Temporal</span>
+                            <span class="text-xs font-bold text-center leading-tight text-gray-700">Aterrizaje<br/>Temporal</span>
                         </button>
-                        <button class="add-symbol border border-gray-200 p-3 rounded hover:border-abbred hover:text-abbred transition flex flex-col items-center gap-2 col-span-2" data-type="maniobras" draggable="true">
-                            <div class="w-8 h-8 flex items-center justify-center">
-                                <svg class="w-8 h-8" viewBox="0 0 50 40">
-                                    <line x1="0" y1="20" x2="15" y2="20" stroke="#3b82f6" stroke-width="3" />
-                                    <line x1="35" y1="20" x2="50" y2="20" stroke="#3b82f6" stroke-width="3" />
-                                    <line x1="15" y1="20" x2="30" y2="5" stroke="#3b82f6" stroke-width="3" />
-                                    <line x1="27" y1="2" x2="33" y2="8" stroke="#3b82f6" stroke-width="3" />
+                        <!-- Maniobras -->
+                        <button class="add-symbol border border-gray-200 p-3 rounded-xl hover:border-abbred hover:shadow-md transition-all flex flex-col items-center gap-2 col-span-2 bg-white" data-type="maniobras" draggable="true">
+                            <div class="symbol-icon-circle" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8); box-shadow: 0 4px 14px rgba(59,130,246,0.45);">
+                                <svg class="w-6 h-6" viewBox="0 0 50 40">
+                                    <line x1="2" y1="20" x2="16" y2="20" stroke="white" stroke-width="3.5" />
+                                    <line x1="34" y1="20" x2="48" y2="20" stroke="white" stroke-width="3.5" />
+                                    <line x1="16" y1="20" x2="31" y2="5" stroke="white" stroke-width="3.5" />
+                                    <line x1="27" y1="2" x2="34" y2="9" stroke="white" stroke-width="3.5" />
                                 </svg>
                             </div>
-                            <span class="text-xs font-semibold text-center leading-tight">Maniobras</span>
+                            <span class="text-xs font-bold text-center leading-tight text-gray-700">Maniobras</span>
                         </button>
                     </div>
                 </div>
@@ -257,34 +293,98 @@
                         <i data-lucide="type" class="w-4 h-4 text-abbred"></i> Añadir Texto
                     </button>
                 </div>
+
+                <!-- Áreas Sombreadas -->
+                <div>
+                    <h2 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Áreas Sombreadas</h2>
+
+                    <!-- Shape selector -->
+                    <div class="flex gap-2 mb-3">
+                        <button id="shadedShapeRect" class="flex-1 flex flex-col items-center gap-1 p-2 rounded-xl border-2 border-abbred bg-red-50 text-gray-700 text-[10px] font-bold transition hover:shadow" title="Rectángulo">
+                            <i data-lucide="square" class="w-5 h-5 text-abbred"></i>
+                            Rect.
+                        </button>
+                        <button id="shadedShapeCircle" class="flex-1 flex flex-col items-center gap-1 p-2 rounded-xl border-2 border-gray-200 bg-white text-gray-400 text-[10px] font-bold transition hover:shadow" title="Círculo">
+                            <i data-lucide="circle" class="w-5 h-5"></i>
+                            Círculo
+                        </button>
+                    </div>
+
+                    <!-- Color palette -->
+                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2">Color</p>
+                    <div class="flex gap-2 mb-3 justify-between" id="shadedColorPalette">
+                        <button class="shaded-color-btn w-8 h-8 rounded-full border-4 border-transparent ring-2 ring-transparent hover:scale-110 transition-transform" data-color="#FF000F" style="background:#FF000F" title="Rojo"></button>
+                        <button class="shaded-color-btn w-8 h-8 rounded-full border-4 border-transparent ring-2 ring-transparent hover:scale-110 transition-transform" data-color="#F59E0B" style="background:#F59E0B" title="Amarillo"></button>
+                        <button class="shaded-color-btn w-8 h-8 rounded-full border-4 border-transparent ring-2 ring-transparent hover:scale-110 transition-transform" data-color="#10B981" style="background:#10B981" title="Verde"></button>
+                        <button class="shaded-color-btn w-8 h-8 rounded-full border-4 border-transparent ring-2 ring-transparent hover:scale-110 transition-transform" data-color="#3B82F6" style="background:#3B82F6" title="Azul"></button>
+                        <button class="shaded-color-btn w-8 h-8 rounded-full border-4 border-transparent ring-2 ring-transparent hover:scale-110 transition-transform" data-color="#8B5CF6" style="background:#8B5CF6" title="Violeta"></button>
+                    </div>
+
+                    <!-- Add button -->
+                    <button id="btnAddShadedArea" class="w-full bg-gradient-to-r from-gray-700 to-gray-900 text-white text-xs font-bold py-2 px-3 rounded-lg hover:from-gray-800 hover:to-black transition flex items-center justify-center gap-2 shadow">
+                        <i data-lucide="layers" class="w-4 h-4"></i> Sombrear Área
+                    </button>
+                </div>
                 
                 <div id="propertiesPanel" class="hidden border-t border-gray-200 pt-4 mt-auto">
                     <h2 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Propiedades</h2>
                     <div class="flex flex-col gap-3">
-                        <div id="textOnlyProps" class="hidden flex-col gap-3">
+                        <!-- Standard symbol/text props -->
+                        <div id="standardProps" class="flex flex-col gap-3">
+                            <div id="textOnlyProps" class="hidden flex-col gap-3">
+                                <div>
+                                    <label class="text-xs font-medium text-gray-500 mb-1 block">Tamaño</label>
+                                    <input type="number" id="propFontSize" class="w-full border border-gray-200 rounded p-1.5 text-sm outline-none focus:border-abbred transition" value="24" min="8" max="150" title="Tamaño de letra">
+                                </div>
+                            </div>
                             <div>
-                                <label class="text-xs font-medium text-gray-500 mb-1 block">Tamaño</label>
-                                <input type="number" id="propFontSize" class="w-full border border-gray-200 rounded p-1.5 text-sm outline-none focus:border-abbred transition" value="24" min="8" max="150" title="Tamaño de letra">
+                                <label class="text-xs font-medium text-gray-500 mb-1 block">Texto del elemento</label>
+                                <input type="text" id="propSymbolText" class="w-full border border-gray-200 rounded p-1.5 text-sm outline-none focus:border-abbred transition" placeholder="Editar texto...">
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-gray-500 mb-1 block">Descripción (solo resumen)</label>
+                                <textarea id="propSymbolDesc" class="w-full border border-gray-200 rounded p-1.5 text-sm outline-none focus:border-abbred transition" placeholder="Añadir nota o descripción..." rows="2"></textarea>
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-gray-500 mb-1 block">Color</label>
+                                <select id="propFillColor" class="w-full border border-gray-200 rounded p-1.5 text-sm outline-none focus:border-abbred transition cursor-pointer">
+                                    <option value="#000000">Negro</option>
+                                    <option value="#FF000F">Rojo</option>
+                                    <option value="#0000FF">Azul</option>
+                                    <option value="#FFFF00">Amarillo</option>
+                                    <option value="#008000">Verde</option>
+                                    <option value="#FFFFFF">Blanco</option>
+                                </select>
                             </div>
                         </div>
-                        <div>
-                            <label class="text-xs font-medium text-gray-500 mb-1 block">Texto del elemento</label>
-                            <input type="text" id="propSymbolText" class="w-full border border-gray-200 rounded p-1.5 text-sm outline-none focus:border-abbred transition" placeholder="Editar texto...">
-                        </div>
-                        <div>
-                            <label class="text-xs font-medium text-gray-500 mb-1 block">Descripción (solo resumen)</label>
-                            <textarea id="propSymbolDesc" class="w-full border border-gray-200 rounded p-1.5 text-sm outline-none focus:border-abbred transition" placeholder="Añadir nota o descripción..." rows="2"></textarea>
-                        </div>
-                        <div>
-                            <label class="text-xs font-medium text-gray-500 mb-1 block">Color</label>
-                            <select id="propFillColor" class="w-full border border-gray-200 rounded p-1.5 text-sm outline-none focus:border-abbred transition cursor-pointer">
-                                <option value="#000000">Negro</option>
-                                <option value="#FF000F">Rojo</option>
-                                <option value="#0000FF">Azul</option>
-                                <option value="#FFFF00">Amarillo</option>
-                                <option value="#008000">Verde</option>
-                                <option value="#FFFFFF">Blanco</option>
-                            </select>
+
+                        <!-- Shaded area props (shown only when a shaded area is selected) -->
+                        <div id="shadedAreaProps" class="hidden flex-col gap-3">
+                            <div class="flex items-center gap-2 mb-1">
+                                <div id="shadedAreaColorDot" class="w-4 h-4 rounded-full border border-gray-300 shrink-0" style="background:#FF000F"></div>
+                                <p class="text-xs font-bold text-gray-700">Área Sombreada</p>
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-gray-500 mb-1 block">Color del sombreado</label>
+                                <select id="propShadeColor" class="w-full border border-gray-200 rounded p-1.5 text-sm outline-none focus:border-abbred transition cursor-pointer">
+                                    <option value="#FF000F">Rojo</option>
+                                    <option value="#F59E0B">Amarillo</option>
+                                    <option value="#10B981">Verde</option>
+                                    <option value="#3B82F6">Azul</option>
+                                    <option value="#8B5CF6">Violeta</option>
+                                    <option value="#F97316">Naranja</option>
+                                    <option value="#EC4899">Rosa</option>
+                                    <option value="#6B7280">Gris</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-gray-500 mb-1 flex justify-between">
+                                    <span>Opacidad</span>
+                                    <span id="opacityVal" class="font-black text-abbred">25%</span>
+                                </label>
+                                <input type="range" id="propShadeOpacity" min="5" max="90" value="25" step="5"
+                                    class="w-full accent-abbred cursor-pointer h-2 rounded-full">
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -317,6 +417,88 @@
     <div id="canvasTooltip" class="absolute hidden bg-gray-800 text-white text-xs px-2 py-1 rounded shadow-lg" style="pointer-events:none; left:0; top:0;"></div>
 </div>
         </section>
+
+        <!-- Items List Panel (right sidebar) -->
+        <aside id="itemsListPanel" class="w-64 bg-white border-l border-gray-200 flex flex-col shadow-sm z-10 shrink-0 overflow-hidden">
+            <!-- Tabs Header -->
+            <div class="border-b border-gray-100 bg-gray-50 flex shrink-0">
+                <button id="tabItems" class="flex-1 py-3 px-2 text-[10px] font-bold text-gray-700 uppercase tracking-wider border-b-2 border-abbred flex items-center justify-center gap-1.5 transition bg-white outline-none">
+                    <i data-lucide="list" class="w-3.5 h-3.5"></i>
+                    <span>Ítems</span>
+                    <span id="itemsListCount" class="text-[9px] font-black bg-abbred text-white rounded-full px-1.5 py-0.5 min-w-[18px] text-center leading-none">0</span>
+                </button>
+                <button id="tabHistory" class="flex-1 py-3 px-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b-2 border-transparent flex items-center justify-center gap-1.5 hover:bg-gray-100 hover:text-gray-600 transition outline-none">
+                    <i data-lucide="history" class="w-3.5 h-3.5"></i>
+                    <span>Historial</span>
+                    <span id="attemptsListCount" class="text-[9px] font-black bg-gray-400 text-white rounded-full px-1.5 py-0.5 min-w-[18px] text-center leading-none">0</span>
+                </button>
+            </div>
+
+            <!-- ITEMS TAB CONTENT -->
+            <div id="itemsTabContent" class="flex-1 flex flex-col overflow-hidden">
+                <!-- Scroll area -->
+                <div id="itemsListContainer" class="flex-1 overflow-y-auto px-2 py-2 flex flex-col gap-1">
+                    <!-- Items are injected here by JS -->
+                    <div class="flex flex-col items-center justify-center py-10 text-gray-300 gap-3">
+                        <svg class="w-10 h-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" stroke-width="1.5"/>
+                            <path d="M12 8v4M12 16h.01" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        <p class="text-xs text-center text-gray-400">Sin símbolos en el lienzo.<br/>Añade uno desde el panel.</p>
+                    </div>
+                </div>
+
+                <!-- Footer hint -->
+                <div class="px-3 py-2 border-t border-gray-100 bg-gray-50 shrink-0">
+                    <p class="text-[10px] text-gray-400 text-center leading-snug">Haz clic en un ítem<br/>para ir a su ubicación</p>
+                </div>
+            </div>
+
+            <!-- HISTORY TAB CONTENT (Hidden by default) -->
+            <div id="historyTabContent" class="flex-1 flex flex-col overflow-hidden hidden">
+                <!-- Top controls for attempts -->
+                <div class="p-3 border-b border-gray-100 bg-white flex flex-col gap-2 shrink-0">
+                    <button id="btnShowSaveForm" class="w-full bg-gradient-to-r from-gray-800 to-gray-900 text-white text-xs font-bold py-2 px-3 rounded-lg hover:from-gray-900 hover:to-black transition flex items-center justify-center gap-1.5 shadow">
+                        <i data-lucide="save" class="w-3.5 h-3.5"></i> Guardar Intento Actual
+                    </button>
+                    
+                    <!-- Hidden Save Attempt Form -->
+                    <div id="saveAttemptForm" class="hidden border border-gray-200 rounded-xl p-3 bg-gray-50 flex flex-col gap-2.5 transition">
+                        <div>
+                            <label class="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-1">Nombre Evaluador</label>
+                            <input type="text" id="attemptEvaluator" class="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none bg-white focus:border-abbred transition" placeholder="Ej: Ing. Pérez">
+                        </div>
+                        <div>
+                            <label class="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-1">Título del Intento</label>
+                            <input type="text" id="attemptTitle" class="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none bg-white focus:border-abbred transition" placeholder="Ej: Primera Inspección">
+                        </div>
+                        <div class="flex gap-2 mt-1">
+                            <button id="btnSubmitSaveAttempt" class="flex-1 bg-abbred text-white text-[10px] font-black py-1.5 px-3 rounded-lg hover:bg-red-700 transition">Guardar</button>
+                            <button id="btnCancelSaveAttempt" class="flex-1 bg-white border border-gray-200 text-gray-600 text-[10px] font-black py-1.5 px-3 rounded-lg hover:bg-gray-100 transition">Cancelar</button>
+                        </div>
+                    </div>
+
+                    <!-- Import JSON button -->
+                    <button id="btnImportAttemptJson" onclick="document.getElementById('attemptJsonUpload').click()" class="w-full bg-white border border-gray-200 text-gray-600 text-[11px] font-bold py-1.5 px-3 rounded-lg hover:bg-gray-50 transition flex items-center justify-center gap-1.5">
+                        <i data-lucide="file-up" class="w-3.5 h-3.5"></i> Importar Borrador (.json)
+                    </button>
+                    <input type="file" id="attemptJsonUpload" class="hidden" accept=".json" />
+                </div>
+
+                <!-- Scroll area for attempts -->
+                <div id="attemptsListContainer" class="flex-1 overflow-y-auto px-2 py-2 flex flex-col gap-2">
+                    <div class="flex flex-col items-center justify-center py-10 text-gray-300 gap-3">
+                        <i data-lucide="archive" class="w-10 h-10 opacity-40"></i>
+                        <p class="text-xs text-center text-gray-400">Sin intentos guardados.<br/>Guarda el estado actual.</p>
+                    </div>
+                </div>
+
+                <!-- Footer hint for history -->
+                <div class="px-3 py-2 border-t border-gray-100 bg-gray-50 shrink-0">
+                    <p class="text-[10px] text-gray-400 text-center leading-snug">El historial se guarda localmente<br/>en este navegador.</p>
+                </div>
+            </div>
+        </aside>
     </main>
     
     <!-- ===== ARC FLASH CALCULATOR MODAL ===== -->

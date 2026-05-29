@@ -169,6 +169,36 @@ let pdfBaseH         = 0;      // Canvas height (fabric units) at base scale
 let pdfRerenderTimer = null;   // Debounce handle for zoom-triggered re-render
 let pdfCropCoords    = null;   // Stores {x, y, w, h} in PDF points for lossless crop
 
+// Keep document within viewport boundaries
+function applyViewportConstraints() {
+    const zoom = canvas.getZoom();
+    const vpt = canvas.viewportTransform;
+    const bg = canvas.backgroundImage;
+    const curW = (bg ? bg.width * bg.scaleX : pdfBaseW) || canvas.width;
+    const curH = (bg ? bg.height * bg.scaleY : pdfBaseH) || canvas.height;
+    const offX = bg ? bg.left : 0;
+    const offY = bg ? bg.top : 0;
+
+    const docW = curW * zoom;
+    const docH = curH * zoom;
+
+    // Horizontal constraints
+    if (docW <= canvas.width) {
+        vpt[4] = (canvas.width - docW) / 2 + offX * zoom;
+    } else {
+        if (vpt[4] > offX * zoom) vpt[4] = offX * zoom;
+        if (vpt[4] < canvas.width - docW + offX * zoom) vpt[4] = canvas.width - docW + offX * zoom;
+    }
+
+    // Vertical constraints
+    if (docH <= canvas.height) {
+        vpt[5] = (canvas.height - docH) / 2 + offY * zoom;
+    } else {
+        if (vpt[5] > offY * zoom) vpt[5] = offY * zoom;
+        if (vpt[5] < canvas.height - docH + offY * zoom) vpt[5] = canvas.height - docH + offY * zoom;
+    }
+}
+
 // --- Pan & Zoom ---
 canvas.on('mouse:wheel', function (opt) {
     const delta = opt.e.deltaY;
@@ -183,33 +213,8 @@ canvas.on('mouse:wheel', function (opt) {
     
     canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
     
-    // Strict Constraint: Keep document within bounds (Google Maps style)
-    const vpt = canvas.viewportTransform;
-    // Use current background bounds if available, otherwise base dimensions
-    const bg = canvas.backgroundImage;
-    const curW = (bg ? bg.width * bg.scaleX : pdfBaseW) || canvas.width;
-    const curH = (bg ? bg.height * bg.scaleY : pdfBaseH) || canvas.height;
-    const offX = bg ? bg.left : 0;
-    const offY = bg ? bg.top : 0;
-
-    const docW = curW * zoom;
-    const docH = curH * zoom;
-    
-    // Horizontal constraints
-    if (docW <= canvas.width) {
-        vpt[4] = (canvas.width - docW) / 2 + offX * zoom;
-    } else {
-        if (vpt[4] > offX * zoom) vpt[4] = offX * zoom;
-        if (vpt[4] < canvas.width - docW + offX * zoom) vpt[4] = canvas.width - docW + offX * zoom;
-    }
-    
-    // Vertical constraints
-    if (docH <= canvas.height) {
-        vpt[5] = (canvas.height - docH) / 2 + offY * zoom;
-    } else {
-        if (vpt[5] > offY * zoom) vpt[5] = offY * zoom;
-        if (vpt[5] < canvas.height - docH + offY * zoom) vpt[5] = canvas.height - docH + offY * zoom;
-    }
+    // Strict Constraint: Keep document within bounds
+    applyViewportConstraints();
 
     opt.e.preventDefault();
     opt.e.stopPropagation();
@@ -261,43 +266,21 @@ canvas.on('mouse:down', function (opt) {
 document.getElementById('btnZoomToFit').addEventListener('click', zoomToFit);
 
 // Handle Panning (Right Click Drag)
-    canvas.on('mouse:move', function (opt) {
-        if (this.isDragging) {
-            const e = opt.e;
-            const vpt = this.viewportTransform;
-            vpt[4] += e.clientX - this.lastPosX;
-            vpt[5] += e.clientY - this.lastPosY;
-            
-            // Apply the same strict constraints during panning
-            const zoom = this.getZoom();
-            const bg = canvas.backgroundImage;
-            const curW = (bg ? bg.width * bg.scaleX : pdfBaseW) || canvas.width;
-            const curH = (bg ? bg.height * bg.scaleY : pdfBaseH) || canvas.height;
-            const offX = bg ? bg.left : 0;
-            const offY = bg ? bg.top : 0;
+canvas.on('mouse:move', function (opt) {
+    if (this.isDragging) {
+        const e = opt.e;
+        const vpt = this.viewportTransform;
+        vpt[4] += e.clientX - this.lastPosX;
+        vpt[5] += e.clientY - this.lastPosY;
+        
+        // Apply the same strict constraints during panning
+        applyViewportConstraints();
 
-            const docW = curW * zoom;
-            const docH = curH * zoom;
-
-            if (docW <= this.width) {
-                vpt[4] = (this.width - docW) / 2 + offX * zoom;
-            } else {
-                if (vpt[4] > offX * zoom) vpt[4] = offX * zoom;
-                if (vpt[4] < this.width - docW + offX * zoom) vpt[4] = this.width - docW + offX * zoom;
-            }
-
-            if (docH <= this.height) {
-                vpt[5] = (this.height - docH) / 2 + offY * zoom;
-            } else {
-                if (vpt[5] > offY * zoom) vpt[5] = offY * zoom;
-                if (vpt[5] < this.height - docH + offY * zoom) vpt[5] = this.height - docH + offY * zoom;
-            }
-
-            this.requestRenderAll();
-            this.lastPosX = e.clientX;
-            this.lastPosY = e.clientY;
-        }
-    });
+        this.requestRenderAll();
+        this.lastPosX = e.clientX;
+        this.lastPosY = e.clientY;
+    }
+});
 
 canvas.on('mouse:up', function (opt) {
     this.setViewportTransform(this.viewportTransform);
@@ -1291,6 +1274,9 @@ function renderHTMLToCanvas(file) {
                     resetCanvasSize(800, 600);
                 }
                 zoomToFit();
+                if (typeof restartRadarAnimations === 'function') {
+                    restartRadarAnimations();
+                }
             });
         } else {
             alert('El archivo HTML aportado no fue generado por esta plataforma o no contiene los datos del lienzo editables.');
@@ -1372,19 +1358,25 @@ async function renderPDFBackground(page, zoomFactor) {
     
     await page.render({ canvasContext: ctx, viewport, intent: 'print' }).promise;
 
-    const img = new fabric.Image(tmpCanvas);
-    img.set({
-        scaleX:  pdfBaseW / tmpCanvas.width,
-        scaleY:  pdfBaseH / tmpCanvas.height,
-        originX: 'left',
-        originY: 'top',
-        left:    0,
-        top:     0,
-        imageSmoothing: false // Keep text sharp, not blurry
-    });
+    const dataUrl = tmpCanvas.toDataURL('image/jpeg', 0.85);
 
-    canvas.setBackgroundImage(img, () => {
-        canvas.renderAll();
+    await new Promise((resolve) => {
+        fabric.Image.fromURL(dataUrl, function(img) {
+            img.set({
+                scaleX:  pdfBaseW / viewport.width,
+                scaleY:  pdfBaseH / viewport.height,
+                originX: 'left',
+                originY: 'top',
+                left:    0,
+                top:     0,
+                imageSmoothing: false // Keep text sharp, not blurry
+            });
+
+            canvas.setBackgroundImage(img, () => {
+                canvas.renderAll();
+                resolve();
+            });
+        });
     });
 }
 
@@ -1585,7 +1577,6 @@ document.getElementById('addText').addEventListener('click', () => {
         hasControls: true
     });
     canvas.add(text);
-    canvas.setActiveObject(text);
 });
 
 // --- Tools: Add Symbols ---
@@ -1597,37 +1588,37 @@ function createSymbolAt(type, left, top) {
     // Create vector equivalents using Fabric.js primitives
     if (type === 'aterramiento') {
         defaultText = 'Tierra';
-        const line = new fabric.Line([20, 0, 20, 30], { fill: '#b45309', stroke: '#b45309', strokeWidth: 3 });
-        const p1 = new fabric.Line([0, 30, 40, 30], { fill: '#b45309', stroke: '#b45309', strokeWidth: 3 });
-        const p2 = new fabric.Line([8, 38, 32, 38], { fill: '#b45309', stroke: '#b45309', strokeWidth: 3 });
-        const p3 = new fabric.Line([16, 46, 24, 46], { fill: '#b45309', stroke: '#b45309', strokeWidth: 3 });
+        const line = new fabric.Line([20, 0, 20, 30], { fill: 'white', stroke: 'white', strokeWidth: 3 });
+        const p1 = new fabric.Line([0, 30, 40, 30], { fill: 'white', stroke: 'white', strokeWidth: 3 });
+        const p2 = new fabric.Line([8, 38, 32, 38], { fill: 'white', stroke: 'white', strokeWidth: 3 });
+        const p3 = new fabric.Line([16, 46, 24, 46], { fill: 'white', stroke: 'white', strokeWidth: 3 });
         iconGroup = new fabric.Group([line, p1, p2, p3], { left, top });
     }
     else if (type === 'aislamiento') {
         defaultText = 'Aislamiento';
-        const line1 = new fabric.Line([0, 20, 15, 20], { stroke: '#3b82f6', strokeWidth: 3 });
-        const line2 = new fabric.Line([35, 20, 50, 20], { stroke: '#3b82f6', strokeWidth: 3 });
-        const arm = new fabric.Line([15, 20, 30, 5], { stroke: '#3b82f6', strokeWidth: 3 });
-        const perpline = new fabric.Line([27, 2, 33, 8], { stroke: '#3b82f6', strokeWidth: 3 });
+        const line1 = new fabric.Line([0, 20, 15, 20], { stroke: 'white', strokeWidth: 3 });
+        const line2 = new fabric.Line([35, 20, 50, 20], { stroke: 'white', strokeWidth: 3 });
+        const arm = new fabric.Line([15, 20, 30, 5], { stroke: 'white', strokeWidth: 3 });
+        const perpline = new fabric.Line([27, 2, 33, 8], { stroke: 'white', strokeWidth: 3 });
         iconGroup = new fabric.Group([line1, line2, arm, perpline], { left, top });
     }
     else if (type === 'aislamiento_int') {
         defaultText = 'Int-Desconec.';
-        const line1 = new fabric.Line([0, 20, 15, 20], { stroke: '#3b82f6', strokeWidth: 3 });
-        const line2 = new fabric.Line([35, 20, 50, 20], { stroke: '#3b82f6', strokeWidth: 3 });
-        const pivot = new fabric.Circle({ left: 12, top: 17, radius: 3, fill: 'transparent', stroke: '#3b82f6', strokeWidth: 3 });
-        const arm = new fabric.Line([16, 17, 30, 5], { stroke: '#3b82f6', strokeWidth: 3 });
-        const perpline = new fabric.Line([27, 2, 33, 8], { stroke: '#3b82f6', strokeWidth: 3 });
+        const line1 = new fabric.Line([0, 20, 15, 20], { stroke: 'white', strokeWidth: 3 });
+        const line2 = new fabric.Line([35, 20, 50, 20], { stroke: 'white', strokeWidth: 3 });
+        const pivot = new fabric.Circle({ left: 12, top: 17, radius: 3, fill: 'transparent', stroke: 'white', strokeWidth: 3 });
+        const arm = new fabric.Line([16, 17, 30, 5], { stroke: 'white', strokeWidth: 3 });
+        const perpline = new fabric.Line([27, 2, 33, 8], { stroke: 'white', strokeWidth: 3 });
         iconGroup = new fabric.Group([line1, line2, pivot, arm, perpline], { left, top });
     }
     else if (type === 'bloqueo') {
         defaultText = 'Bloqueo LOTO';
         const lockBody = new fabric.Rect({
             left: 10, top: 20, width: 30, height: 30, rx: 3, ry: 3,
-            fill: '#FF000F'
+            fill: 'rgba(255,255,255,0.3)'
         });
         const shackle = new fabric.Path('M 15 20 L 15 10 A 10 10 0 0 1 35 10 L 35 20', {
-            fill: 'transparent', stroke: '#71717a', strokeWidth: 4
+            fill: 'transparent', stroke: 'rgba(255,255,255,0.85)', strokeWidth: 4
         });
         const keyhole = new fabric.Circle({
             radius: 3, fill: 'white', left: 22, top: 28
@@ -1640,77 +1631,179 @@ function createSymbolAt(type, left, top) {
     else if (type === 'retorno') {
         defaultText = 'Retorno';
         const arrowLine = new fabric.Path('M 30 10 L 20 10 A 10 10 0 0 0 20 30 L 35 30', {
-            fill: 'transparent', stroke: '#10b981', strokeWidth: 3, strokeLineCap: 'round', strokeLineJoin: 'round'
+            fill: 'transparent', stroke: 'white', strokeWidth: 3, strokeLineCap: 'round', strokeLineJoin: 'round'
         });
         const arrowHead = new fabric.Polyline([
             { x: 28, y: 23 },
             { x: 35, y: 30 },
             { x: 28, y: 37 }
         ], {
-            fill: 'transparent', stroke: '#10b981', strokeWidth: 3, strokeLineCap: 'round', strokeLineJoin: 'round'
+            fill: 'transparent', stroke: 'white', strokeWidth: 3, strokeLineCap: 'round', strokeLineJoin: 'round'
         });
         iconGroup = new fabric.Group([arrowLine, arrowHead], { left, top });
     }
     else if (type === 'verificacion_tension') {
         defaultText = 'Verif. Tensión';
-        const circle = new fabric.Circle({ left: 10, top: 10, radius: 15, fill: 'transparent', stroke: '#a855f7', strokeWidth: 3 });
-        const vLine1 = new fabric.Line([18, 18, 25, 32], { stroke: '#a855f7', strokeWidth: 3 });
-        const vLine2 = new fabric.Line([25, 32, 32, 18], { stroke: '#a855f7', strokeWidth: 3 });
-        const topLines = new fabric.Line([25, 0, 25, 10], { stroke: '#a855f7', strokeWidth: 3 });
+        const circle = new fabric.Circle({ left: 10, top: 10, radius: 15, fill: 'transparent', stroke: 'white', strokeWidth: 3 });
+        const vLine1 = new fabric.Line([18, 18, 25, 32], { stroke: 'white', strokeWidth: 3 });
+        const vLine2 = new fabric.Line([25, 32, 32, 18], { stroke: 'white', strokeWidth: 3 });
+        const topLines = new fabric.Line([25, 0, 25, 10], { stroke: 'white', strokeWidth: 3 });
         iconGroup = new fabric.Group([circle, vLine1, vLine2, topLines], { left, top });
     }
     else if (type === 'interconexion_corto') {
         defaultText = 'Cortocircuito';
-        const lineIn = new fabric.Line([25, 0, 25, 15], { stroke: '#f97316', strokeWidth: 3 });
-        const pivot = new fabric.Circle({ left: 22, top: 15, radius: 3, fill: 'transparent', stroke: '#f97316', strokeWidth: 3 });
-        const lineOut1 = new fabric.Line([5, 35, 15, 35], { stroke: '#f97316', strokeWidth: 3 });
-        const lineOut2 = new fabric.Line([35, 35, 45, 35], { stroke: '#f97316', strokeWidth: 3 });
-        const arm1 = new fabric.Line([23, 18, 10, 30], { stroke: '#f97316', strokeWidth: 3 });
-        const arm2 = new fabric.Line([27, 18, 40, 30], { stroke: '#f97316', strokeWidth: 3 });
+        const lineIn = new fabric.Line([25, 0, 25, 15], { stroke: 'white', strokeWidth: 3 });
+        const pivot = new fabric.Circle({ left: 22, top: 15, radius: 3, fill: 'transparent', stroke: 'white', strokeWidth: 3 });
+        const lineOut1 = new fabric.Line([5, 35, 15, 35], { stroke: 'white', strokeWidth: 3 });
+        const lineOut2 = new fabric.Line([35, 35, 45, 35], { stroke: 'white', strokeWidth: 3 });
+        const arm1 = new fabric.Line([23, 18, 10, 30], { stroke: 'white', strokeWidth: 3 });
+        const arm2 = new fabric.Line([27, 18, 40, 30], { stroke: 'white', strokeWidth: 3 });
         iconGroup = new fabric.Group([lineIn, pivot, lineOut1, lineOut2, arm1, arm2], { left, top });
     }
     else if (type === 'aterrizaje_temporal') {
         defaultText = 'Aterrizaje Temporal';
-        const line = new fabric.Line([20, 10, 20, 30], { fill: '#d97706', stroke: '#d97706', strokeWidth: 3 });
-        const p1 = new fabric.Line([0, 30, 40, 30], { fill: '#d97706', stroke: '#d97706', strokeWidth: 3 });
-        const p2 = new fabric.Line([8, 38, 32, 38], { fill: '#d97706', stroke: '#d97706', strokeWidth: 3 });
-        const p3 = new fabric.Line([16, 46, 24, 46], { fill: '#d97706', stroke: '#d97706', strokeWidth: 3 });
-        const hook = new fabric.Path('M 15 10 A 5 5 0 0 1 25 10 L 25 5', { fill: 'transparent', stroke: '#d97706', strokeWidth: 3 });
+        const line = new fabric.Line([20, 10, 20, 30], { fill: 'white', stroke: 'white', strokeWidth: 3 });
+        const p1 = new fabric.Line([0, 30, 40, 30], { fill: 'white', stroke: 'white', strokeWidth: 3 });
+        const p2 = new fabric.Line([8, 38, 32, 38], { fill: 'white', stroke: 'white', strokeWidth: 3 });
+        const p3 = new fabric.Line([16, 46, 24, 46], { fill: 'white', stroke: 'white', strokeWidth: 3 });
+        const hook = new fabric.Path('M 15 10 A 5 5 0 0 1 25 10 L 25 5', { fill: 'transparent', stroke: 'white', strokeWidth: 3 });
         iconGroup = new fabric.Group([line, p1, p2, p3, hook], { left, top });
     }
     else if (type === 'maniobras') {
         defaultText = 'Maniobras';
-        const line1 = new fabric.Line([0, 20, 15, 20], { stroke: '#3b82f6', strokeWidth: 3 });
-        const line2 = new fabric.Line([35, 20, 50, 20], { stroke: '#3b82f6', strokeWidth: 3 });
-        const arm = new fabric.Line([15, 20, 30, 5], { stroke: '#3b82f6', strokeWidth: 3 });
-        const perpline = new fabric.Line([27, 2, 33, 8], { stroke: '#3b82f6', strokeWidth: 3 });
+        const line1 = new fabric.Line([0, 20, 15, 20], { stroke: 'white', strokeWidth: 3 });
+        const line2 = new fabric.Line([35, 20, 50, 20], { stroke: 'white', strokeWidth: 3 });
+        const arm = new fabric.Line([15, 20, 30, 5], { stroke: 'white', strokeWidth: 3 });
+        const perpline = new fabric.Line([27, 2, 33, 8], { stroke: 'white', strokeWidth: 3 });
         iconGroup = new fabric.Group([line1, line2, arm, perpline], { left, top });
     }
 
     if (iconGroup) {
-        const groupCenter = iconGroup.getCenterPoint();
+        // --- Circle background color per symbol type ---
+        const circleColorMap = {
+            'bloqueo':             '#e3000b',
+            'aterramiento':        '#b45309',
+            'retorno':             '#059669',
+            'aterrizaje_temporal': '#d97706',
+            'maniobras':           '#1d4ed8',
+            'verificacion_tension':'#7c3aed',
+            'interconexion_corto': '#ea580c',
+            'aislamiento':         '#2563eb',
+            'aislamiento_int':     '#2563eb',
+        };
+        const circleColor = circleColorMap[type] || '#334155';
+        const circleRadius = 34;
+
+        // Center icon within circle
+        iconGroup.set({
+            originX: 'center',
+            originY: 'center',
+            left: 0,
+            top: 0,
+        });
+
+        // Scale icon to fit inside the circle (60% of diameter)
+        const iconMax = Math.max(iconGroup.width, iconGroup.height);
+        const iconScale = (circleRadius * 1.15) / iconMax;
+        iconGroup.scale(iconScale);
+
+        // Outer radar ring (most transparent)
+        const ring2 = new fabric.Circle({
+            radius: circleRadius + 16,
+            fill: 'transparent',
+            stroke: circleColor,
+            strokeWidth: 1.5,
+            opacity: 0.20,
+            originX: 'center',
+            originY: 'center',
+            left: 0,
+            top: 0,
+        });
+
+        // Inner radar ring
+        const ring1 = new fabric.Circle({
+            radius: circleRadius + 7,
+            fill: 'transparent',
+            stroke: circleColor,
+            strokeWidth: 2,
+            opacity: 0.40,
+            originX: 'center',
+            originY: 'center',
+            left: 0,
+            top: 0,
+        });
+
+        // Solid core circle
+        const bgCircle = new fabric.Circle({
+            radius: circleRadius,
+            fill: circleColor,
+            originX: 'center',
+            originY: 'center',
+            left: 0,
+            top: 0,
+        });
+
+        // Combine rings + circle + icon as radar badge
+        const badgeGroup = new fabric.Group([ring2, ring1, bgCircle, iconGroup], {
+            originX: 'center',
+            originY: 'center',
+            left: 0,
+            top: 0,
+        });
+
         const textObj = new fabric.Text(defaultText, {
-            fontSize: 16,
-            fill: '#000000',
+            fontSize: 15,
+            fill: '#111827',
             fontFamily: '"ABBvoice", "ABB Voice", "Helvetica", Arial, sans-serif',
+            fontWeight: 'bold',
             originX: 'center',
             originY: 'top',
-            left: groupCenter.x,
-            top: groupCenter.y + (iconGroup.height / 2) + 5,
+            left: 0,
+            top: circleRadius + 20,
             id: 'symbolLabel'
         });
 
-        const realGroup = new fabric.Group([iconGroup, textObj], {
+        const realGroup = new fabric.Group([badgeGroup, textObj], {
             left,
             top,
             isSymbolGroup: true,
             tooltipText: defaultText,
             symbolType: type,
-            baseName: defaultText
+            baseName: defaultText,
+            symbolId: 'sym_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5)
         });
 
         canvas.add(realGroup);
         canvas.setActiveObject(realGroup);
+        refreshItemsList();
+
+        // Infinite pulsing animation for radar rings
+        function pulseRing(r, initialRadius, targetRadius, delay) {
+            setTimeout(() => {
+                if (!r || !canvas.getObjects().includes(realGroup)) return; // stop if deleted
+                
+                r.animate('radius', targetRadius, {
+                    duration: 2000,
+                    onChange: () => canvas.requestRenderAll(),
+                    onComplete: () => {
+                        r.set({
+                            radius: initialRadius,
+                            opacity: r === ring1 ? 0.40 : 0.20
+                        });
+                        pulseRing(r, initialRadius, targetRadius, 0);
+                    },
+                    easing: fabric.util.ease.easeOutQuad
+                });
+
+                r.animate('opacity', 0, {
+                    duration: 2000,
+                    easing: fabric.util.ease.easeOutQuad
+                });
+            }, delay);
+        }
+
+        pulseRing(ring1, circleRadius + 7, circleRadius + 22, 0);
+        pulseRing(ring2, circleRadius + 16, circleRadius + 38, 1000);
     }
 }
 
@@ -1735,11 +1828,118 @@ workspace.addEventListener('drop', (e) => {
     e.preventDefault();
     const symbolType = e.dataTransfer.getData('symbolType');
     if (!symbolType) return;
-
-    // Convert mouse coordinates to Fabric coordinates
     const pointer = canvas.getPointer(e);
     createSymbolAt(symbolType, pointer.x, pointer.y);
 });
+
+// ============================================================
+// ITEMS LIST PANEL — lateral derecho
+// ============================================================
+function refreshItemsList() {
+    const panel = document.getElementById('itemsListPanel');
+    const container = document.getElementById('itemsListContainer');
+    const countEl = document.getElementById('itemsListCount');
+    if (!panel || !container) return;
+
+    const symbols = canvas.getObjects().filter(o => o.isSymbolGroup);
+
+    if (countEl) countEl.textContent = symbols.length;
+
+    if (symbols.length === 0) {
+        container.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-10 text-gray-300 gap-3">
+                <svg class="w-10 h-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" stroke-width="1.5"/>
+                    <path d="M12 8v4M12 16h.01" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <p class="text-xs text-center text-gray-400">Sin símbolos en el lienzo.<br/>Añade uno desde el panel.</p>
+            </div>`;
+        return;
+    }
+
+    const colorMap = {
+        'bloqueo':             '#e3000b',
+        'aterramiento':        '#b45309',
+        'retorno':             '#059669',
+        'aterrizaje_temporal': '#d97706',
+        'maniobras':           '#1d4ed8',
+        'verificacion_tension':'#7c3aed',
+        'interconexion_corto': '#ea580c',
+        'aislamiento':         '#2563eb',
+        'aislamiento_int':     '#2563eb',
+    };
+
+    container.innerHTML = '';
+    symbols.forEach((sym, idx) => {
+        const name = sym.tooltipText || sym.baseName || 'Símbolo';
+        const desc = sym.itemDescription || '';
+        const color = colorMap[sym.symbolType] || '#334155';
+
+        const item = document.createElement('div');
+        item.className = 'items-list-entry group flex items-start gap-3 p-2.5 rounded-lg cursor-pointer hover:bg-gray-50 border border-transparent hover:border-gray-200 transition-all duration-150';
+        item.innerHTML = `
+            <div class="shrink-0 mt-0.5 relative" style="width:32px; height:32px;">
+                <svg viewBox="0 0 32 32" width="32" height="32" style="overflow: visible; position: absolute; left: 0; top: 0;">
+                    <circle cx="16" cy="16" r="14" fill="${color}" class="radar-ring-2" />
+                    <circle cx="16" cy="16" r="9" fill="${color}" class="radar-ring-1" />
+                    <circle cx="16" cy="16" r="5" fill="${color}"/>
+                </svg>
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold text-gray-800 truncate">${idx + 1}. ${name}</p>
+                ${desc ? `<p class="text-[11px] text-gray-500 leading-snug mt-0.5 line-clamp-2">${desc}</p>` : `<p class="text-[11px] text-gray-400 italic">Sin descripción</p>`}
+            </div>
+            <div class="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                <svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+            </div>
+        `;
+
+        item.addEventListener('click', () => {
+            navigateToSymbol(sym);
+        });
+
+        container.appendChild(item);
+    });
+}
+
+function navigateToSymbol(sym) {
+    canvas.setActiveObject(sym);
+
+    // Get center of the symbol in canvas coords
+    const center = sym.getCenterPoint();
+    const zoom = 2.0; // zoom in level when navigating
+
+    // Clamp zoom
+    const clampedZoom = Math.min(Math.max(zoom, 0.2), 10);
+    canvas.setZoom(clampedZoom);
+
+    // Center viewport on the symbol
+    const vpt = canvas.viewportTransform;
+    vpt[4] = canvas.width / 2 - center.x * clampedZoom;
+    vpt[5] = canvas.height / 2 - center.y * clampedZoom;
+    
+    // Apply strict bounds constraints
+    applyViewportConstraints();
+    
+    canvas.requestRenderAll();
+
+    // Flash highlight: brief selection pulse
+    sym.set({ opacity: 0.5 });
+    canvas.renderAll();
+    setTimeout(() => {
+        sym.set({ opacity: 1 });
+        canvas.renderAll();
+    }, 220);
+
+    updatePropertiesPanel();
+}
+
+// Refresh list on canvas events
+canvas.on('object:added', () => setTimeout(refreshItemsList, 50));
+canvas.on('object:removed', () => setTimeout(refreshItemsList, 50));
+canvas.on('object:modified', () => setTimeout(refreshItemsList, 50));
 
 // --- Delete Selected ---
 // Manage delete button state
@@ -1755,16 +1955,180 @@ function handleSelection() {
     updatePropertiesPanel();
 }
 
+// ============================================================
+// ÁREAS SOMBREADAS
+// ============================================================
+
+// State
+let selectedShadedShape = 'rectangle';
+let selectedShadedColor = '#FF000F';
+
+// Helper: hex + alpha → rgba string
+function hexToRgba(hex, alpha) {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.substring(0, 2), 16);
+    const g = parseInt(h.substring(2, 4), 16);
+    const b = parseInt(h.substring(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Shape selector buttons
+const shadedShapeRect   = document.getElementById('shadedShapeRect');
+const shadedShapeCircle = document.getElementById('shadedShapeCircle');
+
+function updateShapeButtons() {
+    const isRect = selectedShadedShape === 'rectangle';
+    shadedShapeRect.className   = `flex-1 flex flex-col items-center gap-1 p-2 rounded-xl border-2 text-[10px] font-bold transition hover:shadow ${
+        isRect ? 'border-abbred bg-red-50 text-gray-700' : 'border-gray-200 bg-white text-gray-400'
+    }`;
+    shadedShapeCircle.className = `flex-1 flex flex-col items-center gap-1 p-2 rounded-xl border-2 text-[10px] font-bold transition hover:shadow ${
+        !isRect ? 'border-abbred bg-red-50 text-gray-700' : 'border-gray-200 bg-white text-gray-400'
+    }`;
+    // update icon colors
+    const ri = shadedShapeRect.querySelector('i');
+    const ci = shadedShapeCircle.querySelector('i');
+    if (ri) ri.className   = `w-5 h-5 ${isRect  ? 'text-abbred' : ''}`;
+    if (ci) ci.className   = `w-5 h-5 ${!isRect ? 'text-abbred' : ''}`;
+}
+
+if (shadedShapeRect) {
+    shadedShapeRect.addEventListener('click', () => {
+        selectedShadedShape = 'rectangle';
+        updateShapeButtons();
+    });
+}
+if (shadedShapeCircle) {
+    shadedShapeCircle.addEventListener('click', () => {
+        selectedShadedShape = 'circle';
+        updateShapeButtons();
+    });
+}
+
+// Color palette buttons
+function updateColorPalette() {
+    document.querySelectorAll('.shaded-color-btn').forEach(btn => {
+        const active = btn.dataset.color === selectedShadedColor;
+        btn.style.border = active ? '4px solid #111827' : '4px solid transparent';
+        btn.style.boxShadow = active ? '0 0 0 3px rgba(0,0,0,0.18)' : 'none';
+        btn.style.transform = active ? 'scale(1.15)' : '';
+    });
+}
+
+document.querySelectorAll('.shaded-color-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        selectedShadedColor = btn.dataset.color;
+        updateColorPalette();
+    });
+});
+
+// Initialise palette state on load
+updateColorPalette();
+
+// Add shaded area to canvas
+function addShadedArea() {
+    const alpha   = 0.25;
+    const fillRgba = hexToRgba(selectedShadedColor, alpha);
+    const stroke  = selectedShadedColor;
+    const center  = canvas.getVpCenter();
+
+    const commonProps = {
+        left: center.x - 100,
+        top:  center.y - 70,
+        fill: fillRgba,
+        stroke: stroke,
+        strokeWidth: 2,
+        strokeDashArray: [8, 5],
+        opacity: 1,
+        isShadedArea: true,
+        shadedShapeType: selectedShadedShape,
+        shadedColor: selectedShadedColor,
+        cornerColor: '#FF000F',
+        cornerStrokeColor: '#ffffff',
+        borderColor: '#FF000F',
+        transparentCorners: false,
+        cornerStyle: 'circle',
+        cornerSize: 10,
+    };
+
+    let shape;
+    if (selectedShadedShape === 'circle') {
+        shape = new fabric.Ellipse({
+            ...commonProps,
+            rx: 100,
+            ry: 70,
+            originX: 'left',
+            originY: 'top',
+        });
+    } else {
+        shape = new fabric.Rect({
+            ...commonProps,
+            width: 200,
+            height: 140,
+            rx: 8,
+            ry: 8,
+        });
+    }
+
+    canvas.add(shape);
+    canvas.sendToBack(shape);   // Shaded areas sit BEHIND symbols
+    // Keep the background image at the very bottom
+    if (canvas.backgroundImage) canvas.sendToBack(canvas.backgroundImage);
+    canvas.setActiveObject(shape);
+    canvas.renderAll();
+    updatePropertiesPanel();
+}
+
+const btnAddShadedArea = document.getElementById('btnAddShadedArea');
+if (btnAddShadedArea) {
+    btnAddShadedArea.addEventListener('click', addShadedArea);
+}
+
 // --- Properties Panel (Text & Symbols) ---
-const propertiesPanel = document.getElementById('propertiesPanel');
-const textOnlyProps = document.getElementById('textOnlyProps');
-const propSymbolText = document.getElementById('propSymbolText');
-const propSymbolDesc = document.getElementById('propSymbolDesc');
-const propFontSize = document.getElementById('propFontSize');
-const propFillColor = document.getElementById('propFillColor');
+const propertiesPanel   = document.getElementById('propertiesPanel');
+const standardProps     = document.getElementById('standardProps');
+const shadedAreaProps   = document.getElementById('shadedAreaProps');
+const shadedAreaColorDot = document.getElementById('shadedAreaColorDot');
+const textOnlyProps     = document.getElementById('textOnlyProps');
+const propSymbolText    = document.getElementById('propSymbolText');
+const propSymbolDesc    = document.getElementById('propSymbolDesc');
+const propFontSize      = document.getElementById('propFontSize');
+const propFillColor     = document.getElementById('propFillColor');
+const propShadeColor    = document.getElementById('propShadeColor');
+const propShadeOpacity  = document.getElementById('propShadeOpacity');
+const opacityVal        = document.getElementById('opacityVal');
 
 function updatePropertiesPanel() {
     const activeObj = canvas.getActiveObject();
+
+    // --- Shaded area ---
+    if (activeObj && activeObj.isShadedArea) {
+        propertiesPanel.classList.remove('hidden');
+        propertiesPanel.classList.add('block');
+        // Hide standard props, show shaded props
+        if (standardProps)  standardProps.classList.add('hidden');
+        if (shadedAreaProps) {
+            shadedAreaProps.classList.remove('hidden');
+            shadedAreaProps.classList.add('flex');
+        }
+        // Sync controls with object
+        const currentColor = activeObj.shadedColor || '#FF000F';
+        if (propShadeColor)   propShadeColor.value = currentColor;
+        if (shadedAreaColorDot) shadedAreaColorDot.style.background = currentColor;
+        // Parse current opacity from fill rgba string
+        const fillStr = activeObj.fill || '';
+        const alphaMatch = fillStr.match(/rgba\(\d+,\d+,\d+,([\d.]+)\)/);
+        const currentAlpha = alphaMatch ? Math.round(parseFloat(alphaMatch[1]) * 100) : 25;
+        if (propShadeOpacity) propShadeOpacity.value = currentAlpha;
+        if (opacityVal) opacityVal.textContent = currentAlpha + '%';
+        return;
+    }
+
+    // Hide shaded props when not a shaded area
+    if (shadedAreaProps) {
+        shadedAreaProps.classList.add('hidden');
+        shadedAreaProps.classList.remove('flex');
+    }
+    if (standardProps) standardProps.classList.remove('hidden');
 
     if (activeObj && activeObj.type === 'i-text') {
         // Plain text properties
@@ -1777,10 +2141,8 @@ function updatePropertiesPanel() {
         propSymbolDesc.value = activeObj.itemDescription || '';
         propFontSize.value = activeObj.fontSize;
 
-        // Match color strictly to dropdown
-        let color = activeObj.fill.toUpperCase();
+        let color = (activeObj.fill || '#000000').toUpperCase();
         propFillColor.value = color;
-        // Fallback if not primary
         if (propFillColor.selectedIndex === -1) propFillColor.selectedIndex = 0;
 
     } else if (activeObj && activeObj.isSymbolGroup) {
@@ -1809,6 +2171,24 @@ function updatePropertiesPanel() {
 function applyProperties() {
     const activeObj = canvas.getActiveObject();
 
+    // --- Shaded area real-time updates ---
+    if (activeObj && activeObj.isShadedArea) {
+        if (propShadeColor && propShadeOpacity) {
+            const newColor   = propShadeColor.value;
+            const newAlpha   = parseInt(propShadeOpacity.value, 10) / 100;
+            const newFill    = hexToRgba(newColor, newAlpha);
+            activeObj.set({
+                fill:        newFill,
+                stroke:      newColor,
+                shadedColor: newColor,
+            });
+            if (shadedAreaColorDot) shadedAreaColorDot.style.background = newColor;
+            if (opacityVal) opacityVal.textContent = propShadeOpacity.value + '%';
+            canvas.renderAll();
+        }
+        return;
+    }
+
     if (activeObj && activeObj.type === 'i-text') {
         activeObj.set({
             text: propSymbolText.value,
@@ -1818,6 +2198,7 @@ function applyProperties() {
             fill: propFillColor.value
         });
         canvas.renderAll();
+        refreshItemsList();
     } else if (activeObj && activeObj.isSymbolGroup) {
         activeObj.set('tooltipText', propSymbolText.value);
         activeObj.set('itemDescription', propSymbolDesc.value);
@@ -1827,8 +2208,9 @@ function applyProperties() {
                 text: propSymbolText.value,
                 fill: propFillColor.value
             });
-            activeObj.addWithUpdate(); // Recalculate group bounding box since text changed
+            activeObj.addWithUpdate();
             canvas.renderAll();
+            refreshItemsList();
         }
     }
 }
@@ -1837,6 +2219,15 @@ propSymbolText.addEventListener('input', applyProperties);
 propSymbolDesc.addEventListener('input', applyProperties);
 propFontSize.addEventListener('input', applyProperties);
 propFillColor.addEventListener('change', applyProperties);
+
+// Shaded area property listeners
+if (propShadeColor)   propShadeColor.addEventListener('change', applyProperties);
+if (propShadeOpacity) {
+    propShadeOpacity.addEventListener('input', () => {
+        if (opacityVal) opacityVal.textContent = propShadeOpacity.value + '%';
+        applyProperties();
+    });
+}
 
 btnDelete.addEventListener('click', () => {
     const activeObjects = canvas.getActiveObjects();
@@ -2291,3 +2682,367 @@ async function autoLoadHseDocuments() {
 }
 
 autoLoadHseDocuments();
+
+// ============================================================
+// DRAFTS / ATTEMPTS HISTORY SYSTEM
+// ============================================================
+
+// Elements
+const tabItems = document.getElementById('tabItems');
+const tabHistory = document.getElementById('tabHistory');
+const itemsTabContent = document.getElementById('itemsTabContent');
+const historyTabContent = document.getElementById('historyTabContent');
+
+const btnShowSaveForm = document.getElementById('btnShowSaveForm');
+const saveAttemptForm = document.getElementById('saveAttemptForm');
+const btnCancelSaveAttempt = document.getElementById('btnCancelSaveAttempt');
+const btnSubmitSaveAttempt = document.getElementById('btnSubmitSaveAttempt');
+const attemptEvaluator = document.getElementById('attemptEvaluator');
+const attemptTitle = document.getElementById('attemptTitle');
+
+const attemptsListContainer = document.getElementById('attemptsListContainer');
+const attemptsListCount = document.getElementById('attemptsListCount');
+const attemptJsonUpload = document.getElementById('attemptJsonUpload');
+
+// Tab Switching logic
+if (tabItems && tabHistory && itemsTabContent && historyTabContent) {
+    tabItems.addEventListener('click', () => {
+        // Active styles to Items tab
+        tabItems.classList.add('border-b-2', 'border-abbred', 'bg-white', 'text-gray-700');
+        tabItems.classList.remove('border-transparent', 'text-gray-400');
+        
+        // Inactive styles to History tab
+        tabHistory.classList.remove('border-b-2', 'border-abbred', 'bg-white', 'text-gray-700');
+        tabHistory.classList.add('border-transparent', 'text-gray-400');
+        
+        // Show/Hide containers
+        itemsTabContent.classList.remove('hidden');
+        historyTabContent.classList.add('hidden');
+    });
+
+    tabHistory.addEventListener('click', () => {
+        // Active styles to History tab
+        tabHistory.classList.add('border-b-2', 'border-abbred', 'bg-white', 'text-gray-700');
+        tabHistory.classList.remove('border-transparent', 'text-gray-400');
+        
+        // Inactive styles to Items tab
+        tabItems.classList.remove('border-b-2', 'border-abbred', 'bg-white', 'text-gray-700');
+        tabItems.classList.add('border-transparent', 'text-gray-400');
+        
+        // Show/Hide containers
+        historyTabContent.classList.remove('hidden');
+        itemsTabContent.classList.add('hidden');
+        
+        // Refresh list
+        refreshAttemptsHistory();
+    });
+}
+
+// Form toggling
+if (btnShowSaveForm && saveAttemptForm) {
+    btnShowSaveForm.addEventListener('click', () => {
+        saveAttemptForm.classList.toggle('hidden');
+        // pre-fill evaluator name if possible
+        const lastEvaluator = localStorage.getItem('abb_last_evaluator') || '';
+        if (attemptEvaluator && !attemptEvaluator.value) {
+            attemptEvaluator.value = lastEvaluator;
+        }
+    });
+}
+
+if (btnCancelSaveAttempt && saveAttemptForm) {
+    btnCancelSaveAttempt.addEventListener('click', () => {
+        saveAttemptForm.classList.add('hidden');
+        attemptTitle.value = '';
+    });
+}
+
+// Save current attempt
+if (btnSubmitSaveAttempt) {
+    btnSubmitSaveAttempt.addEventListener('click', () => {
+        const evaluator = attemptEvaluator.value.trim();
+        const title = attemptTitle.value.trim();
+
+        if (!evaluator || !title) {
+            alert('Por favor completa el nombre del evaluador y el título del intento.');
+            return;
+        }
+
+        // Save last evaluator for convenience
+        localStorage.setItem('abb_last_evaluator', evaluator);
+
+        // Serialize canvas
+        const canvasJson = canvas.toJSON(['isSymbolGroup', 'tooltipText', 'symbolType', 'baseName', 'symbolId', 'itemDescription', 'isShadedArea', 'shadedShapeType', 'shadedColor']);
+
+        const attemptData = {
+            id: 'att_' + Date.now(),
+            evaluator: evaluator,
+            title: title,
+            date: new Date().toLocaleString('es-ES', { 
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+            }),
+            canvasData: canvasJson,
+            pdfBaseScale: pdfBaseScale,
+            pdfBaseW: pdfBaseW,
+            pdfBaseH: pdfBaseH,
+            pdfCropCoords: pdfCropCoords
+        };
+
+        const attempts = JSON.parse(localStorage.getItem('abb_unifilar_attempts') || '[]');
+        attempts.unshift(attemptData); // Add to beginning
+
+        try {
+            localStorage.setItem('abb_unifilar_attempts', JSON.stringify(attempts));
+            saveAttemptForm.classList.add('hidden');
+            attemptTitle.value = '';
+            refreshAttemptsHistory();
+            alert('¡Intento guardado con éxito en el historial!');
+        } catch (error) {
+            console.error('Error saving to localStorage:', error);
+            // Limit exceeded (most likely due to large background image)
+            const confirmDownload = confirm(
+                'El tamaño del diagrama (incluyendo la imagen de fondo de alta resolución) supera la capacidad del almacenamiento del navegador.\n\n' +
+                '¿Deseas descargar este intento como un archivo de borrador (.json) en tu computadora para poder cargarlo y editarlo cuando quieras?'
+            );
+            if (confirmDownload) {
+                exportAttemptToFile(attemptData);
+            }
+        }
+    });
+}
+
+// Refresh attempts history list in UI
+function refreshAttemptsHistory() {
+    if (!attemptsListContainer) return;
+
+    const attempts = JSON.parse(localStorage.getItem('abb_unifilar_attempts') || '[]');
+    
+    if (attemptsListCount) {
+        attemptsListCount.textContent = attempts.length;
+        if (attempts.length > 0) {
+            attemptsListCount.classList.remove('bg-gray-400');
+            attemptsListCount.classList.add('bg-abbred');
+        } else {
+            attemptsListCount.classList.remove('bg-abbred');
+            attemptsListCount.classList.add('bg-gray-400');
+        }
+    }
+
+    if (attempts.length === 0) {
+        attemptsListContainer.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-10 text-gray-300 gap-3">
+                <i data-lucide="archive" class="w-10 h-10 opacity-40"></i>
+                <p class="text-xs text-center text-gray-400">Sin intentos guardados.<br/>Guarda el estado actual.</p>
+            </div>`;
+        if (window.lucide) window.lucide.createIcons();
+        return;
+    }
+
+    attemptsListContainer.innerHTML = '';
+    attempts.forEach((att) => {
+        const item = document.createElement('div');
+        item.className = 'border border-gray-150 rounded-xl p-3 bg-gray-50 flex flex-col gap-2.5 shadow-sm hover:border-gray-350 hover:shadow transition';
+        item.innerHTML = `
+            <div class="flex flex-col">
+                <p class="text-xs font-bold text-gray-800 leading-tight">${att.title}</p>
+                <p class="text-[10px] text-gray-500 mt-1 flex items-center gap-1">
+                    <i data-lucide="user" class="w-3 h-3 text-abbred"></i> Evaluador: <b>${att.evaluator}</b>
+                </p>
+                <p class="text-[9px] text-gray-400 mt-0.5 flex items-center gap-1">
+                    <i data-lucide="calendar" class="w-3 h-3"></i> ${att.date}
+                </p>
+            </div>
+            <div class="flex gap-1.5 border-t border-gray-150 pt-2.5">
+                <button class="btn-load-attempt flex-1 bg-white border border-gray-200 text-gray-700 text-[10px] font-bold py-1.5 px-2 rounded-lg hover:bg-gray-100 transition flex items-center justify-center gap-1" data-id="${att.id}">
+                    <i data-lucide="folder-open" class="w-3 h-3 text-abbred"></i> Cargar
+                </button>
+                <button class="btn-export-attempt bg-white border border-gray-200 text-gray-500 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100 transition" title="Exportar a Archivo JSON" data-id="${att.id}">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                </button>
+                <button class="btn-delete-attempt bg-white border border-gray-200 text-red-500 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-55 transition" title="Eliminar Intento" data-id="${att.id}">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                </button>
+            </div>
+        `;
+
+        // Bind Load button
+        item.querySelector('.btn-load-attempt').addEventListener('click', () => {
+            if (confirm(`¿Estás seguro de que deseas cargar el intento "${att.title}"?\nEsto reemplazará todo el contenido actual del lienzo.`)) {
+                loadAttempt(att);
+            }
+        });
+
+        // Bind Export button
+        item.querySelector('.btn-export-attempt').addEventListener('click', () => {
+            exportAttemptToFile(att);
+        });
+
+        // Bind Delete button
+        item.querySelector('.btn-delete-attempt').addEventListener('click', () => {
+            if (confirm(`¿Estás seguro de que deseas eliminar el intento "${att.title}" del historial?`)) {
+                deleteAttempt(att.id);
+            }
+        });
+
+        attemptsListContainer.appendChild(item);
+    });
+
+    if (window.lucide) window.lucide.createIcons();
+}
+
+// Restart radar pulse animations for loaded symbols
+function restartRadarAnimations() {
+    const circleRadius = 34;
+    canvas.getObjects().forEach(obj => {
+        if (obj && obj.isSymbolGroup) {
+            const badgeGroup = obj.item(0);
+            if (badgeGroup && typeof badgeGroup.item === 'function') {
+                const ring2 = badgeGroup.item(0);
+                const ring1 = badgeGroup.item(1);
+
+                if (ring1 && ring2) {
+                    ring1.set({ radius: circleRadius + 7, opacity: 0.40 });
+                    ring2.set({ radius: circleRadius + 16, opacity: 0.20 });
+
+                    function pulseRing(r, initialRadius, targetRadius, delay) {
+                        setTimeout(() => {
+                            if (!r || !canvas.getObjects().includes(obj)) return;
+                            
+                            r.animate('radius', targetRadius, {
+                                duration: 2000,
+                                onChange: () => canvas.requestRenderAll(),
+                                onComplete: () => {
+                                    r.set({
+                                        radius: initialRadius,
+                                        opacity: r === ring1 ? 0.40 : 0.20
+                                    });
+                                    pulseRing(r, initialRadius, targetRadius, 0);
+                                },
+                                easing: fabric.util.ease.easeOutQuad
+                            });
+
+                            r.animate('opacity', 0, {
+                                duration: 2000,
+                                easing: fabric.util.ease.easeOutQuad
+                            });
+                        }, delay);
+                    }
+
+                    pulseRing(ring1, circleRadius + 7, circleRadius + 22, 0);
+                    pulseRing(ring2, circleRadius + 16, circleRadius + 38, 1000);
+                }
+            }
+        }
+    });
+    canvas.requestRenderAll();
+}
+
+// Load a saved attempt
+function loadAttempt(att) {
+    if (!att || !att.canvasData) return;
+
+    // Reset crop & scale states
+    pdfBaseScale = att.pdfBaseScale || 4.0;
+    pdfBaseW = att.pdfBaseW || 0;
+    pdfBaseH = att.pdfBaseH || 0;
+    pdfCropCoords = att.pdfCropCoords || null;
+    currentPdfPage = null; // Prevent PDF page dynamic zoom rendering
+
+    // Enable sidebar tools
+    if (toolsPanel) toolsPanel.classList.remove('opacity-30', 'pointer-events-none');
+
+    // Load canvas
+    canvas.loadFromJSON(att.canvasData, function () {
+        canvas.renderAll();
+        
+        // Restore background size and constraints
+        const bg = canvas.backgroundImage;
+        if (bg) {
+            pdfBaseW = bg.width * bg.scaleX;
+            pdfBaseH = bg.height * bg.scaleY;
+        }
+        
+        zoomToFit();
+        refreshItemsList();
+        restartRadarAnimations();
+        
+        // Show success alert
+        alert(`¡Intento "${att.title}" cargado correctamente! El lienzo está listo para ser editado.`);
+        
+        // Open Items list panel tab so user sees the new items
+        if (tabItems) tabItems.click();
+    });
+}
+
+// Export single attempt to JSON file
+function exportAttemptToFile(att) {
+    if (!att) return;
+    const jsonStr = JSON.stringify(att, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const cleanTitle = att.title.replace(/[^a-zA-Z0-9]/g, '_') || 'intento';
+    link.download = `ABB_Borrador_Unifilar_${cleanTitle}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
+// Delete attempt
+function deleteAttempt(id) {
+    let attempts = JSON.parse(localStorage.getItem('abb_unifilar_attempts') || '[]');
+    attempts = attempts.filter(att => att.id !== id);
+    localStorage.setItem('abb_unifilar_attempts', JSON.stringify(attempts));
+    refreshAttemptsHistory();
+}
+
+// Import JSON file logic
+if (attemptJsonUpload) {
+    attemptJsonUpload.addEventListener('change', (e) => {
+        if (e.target.files.length) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = function (f) {
+                try {
+                    const att = JSON.parse(f.target.result);
+                    if (!att.canvasData || !att.title) {
+                        throw new Error('El archivo no contiene un formato de borrador válido de la plataforma.');
+                    }
+                    
+                    const confirmLoad = confirm(
+                        `Se ha leído el borrador:\n` +
+                        `• Título: ${att.title}\n` +
+                        `• Evaluador: ${att.evaluator || 'Desconocido'}\n` +
+                        `• Fecha: ${att.date || 'Desconocida'}\n\n` +
+                        `¿Deseas cargarlo e importarlo en el historial local para editarlo ahora?`
+                    );
+
+                    if (confirmLoad) {
+                        // Load onto canvas
+                        loadAttempt(att);
+                        
+                        // Import into history list
+                        const attempts = JSON.parse(localStorage.getItem('abb_unifilar_attempts') || '[]');
+                        // Check if it already exists to avoid duplicates
+                        if (!attempts.some(a => a.id === att.id)) {
+                            attempts.unshift(att);
+                            localStorage.setItem('abb_unifilar_attempts', JSON.stringify(attempts));
+                        }
+                        refreshAttemptsHistory();
+                    }
+                } catch (err) {
+                    console.error('Error parsing JSON draft file:', err);
+                    alert('Error al leer el archivo JSON: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+            attemptJsonUpload.value = ''; // clear input
+        }
+    });
+}
+
+// Auto-run on load
+refreshAttemptsHistory();

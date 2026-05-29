@@ -32,3 +32,30 @@ body {
 .canvas-container {
     margin: 0 auto;
 }
+
+/* Sidebar items radar pulsing animations */
+@keyframes radar-pulse {
+    0% {
+        transform: scale(0.85);
+        opacity: 0.9;
+    }
+    50% {
+        transform: scale(1.1);
+        opacity: 0.45;
+    }
+    100% {
+        transform: scale(1.3);
+        opacity: 0;
+    }
+}
+
+.radar-ring-1 {
+    animation: radar-pulse 2.2s infinite ease-out;
+    transform-origin: 16px 16px;
+}
+
+.radar-ring-2 {
+    animation: radar-pulse 2.2s infinite ease-out;
+    animation-delay: 1.1s;
+    transform-origin: 16px 16px;
+}
