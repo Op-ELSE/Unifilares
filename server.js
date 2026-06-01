@@ -27,8 +27,11 @@ const upload = multer({ dest: path.join(__dirname, 'tmp_uploads') });
 
 // ─── Ruta de LibreOffice según el sistema operativo ──────────────────────────
 function getLibreOfficePath() {
-    // Windows (ruta por defecto del instalador oficial)
+    // Windows: intenta primero la ruta de extracción local, luego la ruta por defecto del instalador oficial
     const winPaths = [
+        path.join(__dirname, 'tools', 'libreoffice', 'App', 'libreoffice', 'program', 'soffice.exe'),
+        path.join(__dirname, 'tools', 'libreoffice', 'program', 'soffice.exe'),
+        path.join(__dirname, 'tools', 'libreoffice', 'LibreOffice', 'program', 'soffice.exe'),
         'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
         'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe'
     ];
