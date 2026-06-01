@@ -667,43 +667,37 @@ if (btnAppendArcFlashToPdf) {
         btnAppendArcFlashToPdf.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Añadiendo...`;
         if (window.lucide) window.lucide.createIcons();
 
-        const pdfBytes = await window.pdfTemplateHelper.populateTemplate({
-            systemVoltage: document.getElementById('af_voltage')?.value || '--',
-            upstreamBreaker: document.getElementById('af_breaker')?.value || '--',
-            shortCircuit: document.getElementById('af_isc')?.value || '--',
-            energyStorage: document.getElementById('af_ecap')?.value || '--',
-            openingTime: document.getElementById('af_time')?.value || '--',
-            workingDistance: (parseFloat(document.getElementById('af_voltage')?.value) <= 600 ? '455 mm (18 in)' : '910 mm (36 in)'),
-            powerForArc: (() => {
-                const v = parseFloat(document.getElementById('af_voltage')?.value) || 0;
-                const i = parseFloat(document.getElementById('af_breaker')?.value) || 0;
-                return ((v * Math.sqrt(3) * i) / 1000).toFixed(1);
-            })(),
-            incidentEnergy: document.getElementById('lbl_energy')?.textContent.replace(' cal/cm²', '').trim() || '--',
-            arcFlashApproach: document.getElementById('lbl_arcBoundary')?.textContent || '--',
-            limitsApproach: '--',
-            restrictedApproach: '--',
-            exposedMovable: '--',
-            arcFlashBoundary: document.getElementById('lbl_arcBoundary')?.textContent || '--',
-            glove: document.getElementById('lbl_gloves')?.textContent || '--',
-            requiredPPE: document.getElementById('lbl_ppe')?.textContent || '--',
-            footwear: document.getElementById('lbl_footwear')?.textContent || '--',
-            shockHazard: document.getElementById('lbl_shockV')?.textContent || '--',
-            limitedApproach: document.getElementById('lbl_limited')?.textContent || '--',
-            restrictedApproach2: document.getElementById('lbl_restricted')?.textContent || '--',
-            busEquipmentId: document.getElementById('lbl_equipId')?.textContent || '--',
-            assessmentDate: document.getElementById('lbl_date')?.textContent || '--',
-            protectiveDevice: document.getElementById('lbl_device')?.textContent || '--'
-        }, (window.IMAGES_DATA && window.IMAGES_DATA.shock) ? window.IMAGES_DATA.shock : null);
-            if (pdfBytes) {
-            addedArcFlashReports.push(pdfBytes);
-            alert('Reporte de Arc Flash añadido con éxito. Se incluirá al final del PDF consolidado al hacer clic en "Descargar".');
+        try {
+            // 1. Generar el DOCX con los datos actuales de la UI
+            const blobContent = await buildArcFlashDocxBlob();
+
+            // 2. Crear FormData con el DOCX
+            const formData = new FormData();
+            formData.append('file', blobContent, 'reporte.docx');
+
+            // 3. Enviar al backend Node.js/LibreOffice
+            const response = await fetch(BACKEND_URL, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const errJson = await response.json().catch(() => ({}));
+                throw new Error(errJson.error || `Error del servidor: ${response.status}`);
+            }
+
+            // 4. Leer como arrayBuffer y añadir a addedArcFlashReports
+            const pdfArrayBuffer = await response.arrayBuffer();
+            addedArcFlashReports.push(pdfArrayBuffer);
+            alert('Reporte de Arc Flash añadido con éxito (usando tu nuevo formato de Word). Se incluirá al final del PDF consolidado al hacer clic en "Descargar".');
             
             // Close modal
             const modal = document.getElementById('arcFlashModal');
             if (modal) modal.classList.add('hidden');
-        } else {
-            alert('Error al generar el reporte.');
+
+        } catch (err) {
+            console.error('[Añadir Reporte PDF]', err);
+            alert('Error generando o añadiendo el reporte PDF:\n' + err.message + '\n\n¿Está corriendo el servidor?\n  node server.js');
         }
 
         btnAppendArcFlashToPdf.disabled = false;
