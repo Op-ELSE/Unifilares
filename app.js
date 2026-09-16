@@ -333,22 +333,19 @@ class CalculationEngine {
 
         const warnings = [];
 
-        // S10: Exceeded Limits
+        // Absolute Calculator Limits (from the Excel / previous version)
         if (V > 36000 || I_breaker > 6300 || I_sc > 100 || E_cap > 300) {
             warnings.push(" Not compatible or exceeding the limits of the Calculator.");
         }
 
-        // S11: DC Boundary
         if (V > 1000 && !isAC) {
             warnings.push(" DC Calculation is only available in LV (Up to 1kV).");
         }
 
-        // S12: Enclosed Box Boundary
         if (V > 1000 && !isOpenAir) {
             warnings.push("Enclosed box Calculation is only available in LV (Up to 1kV).");
         }
 
-        // S13: Live Working Boundary
         if (V > 1000 && isLive) {
             warnings.push(" Live Working is only allowed in LV (Up to 1kV).");
         }
@@ -379,7 +376,6 @@ class CalculationEngine {
         if (isAC) {
             if (isOpenAir) {
                 if (V <= 600) {
-                    // F25
                     const F25 = 5271 * Math.pow(D_inches, -1.9593) * t * (0.0016 * Math.pow(I_sc, 2) - 0.0076 * I_sc + 0.8938);
                     if (I_sc <= 1) {
                         E_inc = F25 * I_sc;
@@ -387,7 +383,6 @@ class CalculationEngine {
                         E_inc = F25;
                     }
                 } else {
-                    // I26 (V > 600)
                     E_inc = 793 * Math.pow(D_inches, -2) * (V / 1000) * I_sc * t;
                 }
             } else {
@@ -409,11 +404,11 @@ class CalculationEngine {
             }
         }
 
-        // S14: Incident Energy Limit
+        // Incident Energy limit check (40 cal/cm2)
         if (E_inc > 40) {
             warnings.push(" Local operation over 40 cal/cm2 is not allowed. A different alternative must be considered.");
             return {
-                incidentEnergy: '--',
+                incidentEnergy: E_inc.toFixed(2),
                 arcBoundary: '--',
                 ppeCategory: '--',
                 ppeDesc: 'Calculation not applicable.',
@@ -428,72 +423,122 @@ class CalculationEngine {
             };
         }
 
-        // 3. PPE Category Logic
-        let ppeCategory = '--';
-        let gloveClass = '--';
-        let footwear = '--';
-        let ppeDesc = '--';
+        // --- NEW V1.6C CATEGORY MAPPING ---
+        
+        // 1. Determine Category by Upstream Breaker Current (UOB)
+        let catBreaker = 'A';
+        if (I_breaker > 16 && I_breaker <= 160) catBreaker = 'B';
+        else if (I_breaker > 160 && I_breaker <= 630) catBreaker = 'C';
+        else if (I_breaker > 630) catBreaker = 'D';
 
-        // Penalty: if any parameter exceeds absolute limits, no PPE is assignable
-        const penalized = (V > 36000 || I_breaker > 6500 || I_sc > 150 || E_cap > 300);
-
-        if (!penalized) {
-            // Evaluate category from most restrictive (A) to least (F)
-            // Each category has hard upper bounds on ALL parameters simultaneously
-            if (V <= 30 && I_breaker <= 16 && I_sc <= 1 && E_inc <= 8 && E_cap === 0) {
-                ppeCategory = 'A';
-            } else if (V <= 480 && I_breaker <= 16 && I_sc <= 1 && E_inc <= 8 && E_cap <= 10) {
-                ppeCategory = 'B';
-            } else if (V <= 480 && I_breaker <= 63 && I_sc <= 7 && E_inc <= 8 && E_cap <= 10) {
-                ppeCategory = 'C';
-            } else if (V <= 1000 && I_breaker <= 200 && I_sc <= 15 && E_inc <= 25 && E_cap <= 150) {
-                ppeCategory = 'D';
-            } else if (V <= 7000 && E_inc <= 30 && E_cap <= 300) {
-                ppeCategory = 'E';
-            } else if (V <= 36000 && E_inc <= 40 && E_cap <= 300) {
-                ppeCategory = 'F';
-            }
+        // 2. Determine Category by Short Circuit Current (SCC)
+        let catSC = 'A';
+        if (V <= 600) {
+            if (I_sc > 1 && I_sc <= 10) catSC = 'B';
+            else if (I_sc > 10 && I_sc <= 25) catSC = 'C';
+            else if (I_sc > 25) catSC = 'D';
+        } else {
+            // High Voltage (>600V) SC category ranges (Excel alignment):
+            if (I_sc <= 1) catSC = 'A';
+            else if (I_sc > 1 && I_sc <= 5) catSC = 'B';
+            else if (I_sc > 5 && I_sc <= 12) catSC = 'C';
+            else if (I_sc > 12) catSC = 'D';
         }
 
-        // Set descriptions based on category
-        // Indoor = always Electrical Hazard (EH) footwear for ALL categories (A-F)
-        // Outdoor = category-specific boots per Excel workbook logic
-        const isIndoor = params.indoor !== 'Outdoor'; // default to Indoor when toggle not set
+        // 3. Determine Category by Energy Storage (Capacitors)
+        let catStorage = 'A';
+        if (E_cap > 10 && E_cap <= 150) catStorage = 'C';
+        else if (E_cap > 150) catStorage = 'D';
 
+        // Parameter-based Category is the maximum of the three
+        const catMap = { 'A': 1, 'B': 2, 'C': 3, 'D': 4 };
+        const invCatMap = { 1: 'A', 2: 'B', 3: 'C', 4: 'D' };
+        
+        let maxVal = Math.max(catMap[catBreaker], catMap[catSC], catMap[catStorage]);
+        
+        // If Voltage is Media/High (>600V), minimum parameter-based category is B
+        if (V > 600 && maxVal < 2) {
+            maxVal = 2;
+        }
+        
+        const catParam = invCatMap[maxVal];
+
+        // 4. Determine Category by Incident Energy (E_inc)
+        // A/B valid if E_inc <= 8 | C if 8 < E_inc <= 25 | D if E_inc > 25
+        let catEnergy = 'A';
+        if (E_inc > 8 && E_inc <= 25) {
+            catEnergy = 'C';
+        }
+        if (E_inc > 25) {
+            catEnergy = 'D';
+        }
+
+        // Final Category is the maximum (highest) of the two
+        const finalCatVal = Math.max(catMap[catParam], catMap[catEnergy]);
+        const ppeCategory = invCatMap[finalCatVal];
+
+        // --- Determine Shock Protection Index (1 to 7) based on Voltage ---
+        let shockIndex = 1;
+        if (V >= 50 && V < 500) shockIndex = 2;
+        else if (V >= 500 && V < 1000) shockIndex = 3;
+        else if (V >= 1000 && V < 7500) shockIndex = 4;
+        else if (V >= 7500 && V < 17000) shockIndex = 5;
+        else if (V >= 17000 && V < 26500) shockIndex = 6;
+        else if (V >= 26500 && V <= 36000) shockIndex = 7;
+
+        // --- Set PPE Descriptions ---
+        let ppeDesc = '';
+        let arcGlove = '';
         switch(ppeCategory) {
             case 'A':
-                ppeDesc = "ABB's minimum arc flash workwear ATPV >= 8 Cal/cm2 Cat. 2 (NFPA 70E) + Dielectric Goggles";
-                gloveClass = "Arc Grip Glove >= 8 Cal/cm2";
-                footwear = 'Electrical Hazard Footwear "EH"';
+                ppeDesc = "ABB's minimum arc flash workwear ATPV =8 Cal/cm2 Cat. 2 (NFPA 70E) + Safety Glasses - Non-Conductive";
+                arcGlove = "CAT 2 Arc Grip Glove";
                 break;
             case 'B':
-                ppeDesc = "One layer ATPV >= 8 Cal/cm2 Cat. 2 (NFPA 70E) + Dielectric Goggles or CAT 2 Face Shield";
-                gloveClass = "Class 00 >= 500V + CAT 2 Leather";
-                footwear = isIndoor ? 'Electrical Hazard Footwear "EH"' : 'Dielectric Safety Boots - Class 0 (Outdoor)';
+                ppeDesc = "One layer - ATPV =8 Cal/cm2 Cat. 2 (NFPA 70E) + Safety Glasses - Non-Conductive or CAT 2 Face Shield + CAT 2 Balaclava";
+                arcGlove = "CAT 2 Leather";
                 break;
             case 'C':
-                ppeDesc = "One layer ATPV >= 8 Cal/cm2 Cat. 2 (NFPA 70E) + Ear Prot + CAT 2 Face Shield / Balaclava";
-                gloveClass = "Class 00 >= 500V + CAT 2 Leather";
-                footwear = isIndoor ? 'Electrical Hazard Footwear "EH"' : 'Dielectric Safety Boots - Class 0 (Outdoor)';
+                ppeDesc = "Multi-layer Recommended ATPV =8 Cal/cm2 and ATPV =25 Cal/cm2 + CAT 3 Face Shield + CAT 3 Balaclava + Ear Protection";
+                arcGlove = "CAT 3 Leather";
                 break;
             case 'D':
-                ppeDesc = "One Layer / Multi-layer ATPV >= 25 Cal/cm2 or 2 x ATPV >= 8 Cal/cm2 + Ear Prot. + CAT 3 Complete Hood";
-                gloveClass = "Class 0 >= 1000V + CAT 3 Leather";
-                footwear = isIndoor ? 'Electrical Hazard Footwear "EH"' : 'Dielectric Safety Boots - Class 0 (Outdoor)';
-                break;
-            case 'E':
-                ppeDesc = "Multi-layer mandatory ATPV >= 8 Cal/cm2 and ATPV >= 25 Cal/cm2 + Ear Prot. + CAT 3 Complete Hood";
-                gloveClass = "Class 1 >= 7.5kV + CAT 3 Leather";
-                footwear = isIndoor ? 'Electrical Hazard Footwear "EH"' : 'Dielectric Safety Boots - Class 2 (Outdoor)';
-                break;
-            case 'F':
-                ppeDesc = "Multi-layer mandatory ATPV >= 8 Cal/cm2 and ATPV >= 40 Cal/cm2 Full Suite + Ear Prot. + CAT 4 Complete Hood";
-                gloveClass = "Class 4 + Arc rated >= 40 Cal/cm2";
-                footwear = isIndoor ? 'Electrical Hazard Footwear "EH"' : 'EH Safety Shoe + Overboot Class 3 (Outdoor)';
+                ppeDesc = "Multi-layer Recommended ATPV =8 Cal/cm2 and ATPV =40 Cal/cm2 Full Suite + CAT 4 Complete Hood + Ear Protection";
+                arcGlove = "Arc rated CAT 4 = 40 Cal/cm2";
                 break;
             default:
                 ppeDesc = "No valid PPE category found (Limits exceeded).";
+                arcGlove = "";
                 break;
+        }
+
+        // Guante Dieléctrico por choque eléctrico
+        let shockGlove = '';
+        switch(shockIndex) {
+            case 2: shockGlove = " + Class 00 Gloves"; break;
+            case 3: shockGlove = " + Class 0 Gloves"; break;
+            case 4: shockGlove = " + Class 1 Gloves"; break;
+            case 5: shockGlove = " + Class 2 Gloves"; break;
+            case 6: shockGlove = " + Class 3 Gloves"; break;
+            case 7: shockGlove = " + Class 4 Gloves"; break;
+        }
+        const gloveClass = arcGlove + shockGlove;
+
+        // Calzado (Indoor vs Outdoor)
+        const isIndoor = params.indoor !== 'Outdoor'; 
+        let footwear = '';
+        if (isIndoor) {
+            footwear = 'Electrical Hazard Footwear "EH"';
+        } else {
+            switch(shockIndex) {
+                case 1: footwear = 'Electrical Hazard Footwear "EH"'; break;
+                case 2: footwear = 'Dielectric Safety Boots - Class 0'; break;
+                case 3: footwear = 'Dielectric Safety Boots - Class 0'; break;
+                case 4: footwear = 'Dielectric Safety Boots - Class 1'; break;
+                case 5: footwear = 'Dielectric Safety Boots - Class 2'; break;
+                case 6: footwear = 'Dielectric Safety Boots - Class 3'; break;
+                case 7: footwear = 'Overboot Class 3'; break;
+            }
         }
 
         // 4. Arc Flash Boundary
@@ -531,6 +576,7 @@ class CalculationEngine {
             limitedMovable,
             restricted,
             shockV: `${V} V${isAC ? 'AC' : 'DC'}`,
+            shockIndex,
             warnings: [],
             params
         };
@@ -543,6 +589,22 @@ class CalculationEngine {
         document.getElementById('lbl_ppe').textContent = results.ppeDesc;
         document.getElementById('lbl_gloves').textContent = results.gloveClass;
         document.getElementById('lbl_footwear').textContent = results.footwear;
+
+        const imgPpe = document.getElementById('img_ppe');
+        if (imgPpe && results.ppeCategory && results.ppeCategory !== '--') {
+            imgPpe.src = `Resultados/EPP/${results.ppeCategory}.png`;
+            imgPpe.classList.remove('hidden');
+        } else if (imgPpe) {
+            imgPpe.classList.add('hidden');
+        }
+
+        const imgShock = document.getElementById('img_shock');
+        if (imgShock && results.shockIndex) {
+            imgShock.src = `Resultados/EPP/${results.shockIndex}.png`;
+            imgShock.classList.remove('hidden');
+        } else if (imgShock) {
+            imgShock.classList.add('hidden');
+        }
 
         document.getElementById('lbl_shockV').textContent = results.shockV;
         document.getElementById('lbl_limited').textContent = results.limited;
@@ -696,8 +758,23 @@ if (btnAppendArcFlashToPdf) {
             if (modal) modal.classList.add('hidden');
 
         } catch (err) {
-            console.error('[Añadir Reporte PDF]', err);
-            alert('Error generando o añadiendo el reporte PDF:\n' + err.message + '\n\n¿Está corriendo el servidor?\n  node server.js');
+            console.warn('[Añadir Reporte PDF] El servidor local falló o no está corriendo. Intentando generación local en el navegador...', err);
+            try {
+                // Generación local en navegador (fallback offline)
+                const pdfArrayBuffer = await generateArcFlashPDFBytes();
+                if (!pdfArrayBuffer) {
+                    throw new Error("La generación local de PDF falló.");
+                }
+                addedArcFlashReports.push(pdfArrayBuffer);
+                alert('Reporte de Arc Flash añadido con éxito (generado localmente en tu navegador ya que el servidor no está corriendo). Se incluirá al final del PDF consolidado al hacer clic en "Descargar".');
+                
+                // Close modal
+                const modal = document.getElementById('arcFlashModal');
+                if (modal) modal.classList.add('hidden');
+            } catch (fallbackErr) {
+                console.error('[Añadir Reporte PDF Fallback]', fallbackErr);
+                alert('Error generando o añadiendo el reporte PDF:\n' + err.message + '\n\n¿Está corriendo el servidor?\n  node server.js\n\n(El motor local de reserva también falló: ' + fallbackErr.message + ')');
+            }
         }
 
         btnAppendArcFlashToPdf.disabled = false;
@@ -758,8 +835,30 @@ if (btnExportArcPdf) {
             URL.revokeObjectURL(url);
 
         } catch (err) {
-            console.error('[PDF Export]', err);
-            alert('Error generando PDF:\n' + err.message + '\n\n¿Está corriendo el servidor?\n  node server.js');
+            console.warn('[PDF Export] El servidor local falló o no está corriendo. Intentando generación local en el navegador...', err);
+            try {
+                // Generación local en navegador (fallback offline)
+                const pdfBytes = await generateArcFlashPDFBytes();
+                if (!pdfBytes) {
+                    throw new Error("La generación local de PDF falló.");
+                }
+                const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const url     = URL.createObjectURL(pdfBlob);
+                const link    = document.createElement('a');
+
+                const equipId     = document.getElementById('lbl_equipId')?.textContent || 'report';
+                const cleanEquipId = equipId.replace(/[^a-zA-Z0-9]/g, '_') || 'report';
+
+                link.href     = url;
+                link.download = `Anexo_Calculadora_Arc_Flash_${cleanEquipId}.pdf`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            } catch (fallbackErr) {
+                console.error('[PDF Export Fallback]', fallbackErr);
+                alert('Error generando PDF:\n' + err.message + '\n\n¿Está corriendo el servidor?\n  node server.js\n\n(El motor local de reserva también falló: ' + fallbackErr.message + ')');
+            }
         }
 
         btnExportArcPdf.disabled = false;
@@ -862,8 +961,8 @@ async function generateArcFlashPDFBytes() {
 
         // EPP (PPE) Image on the left side
         const eppImgData = window.IMAGES_DATA ? window.IMAGES_DATA[catLetter] : null;
-        const eppImgW = 3.5;
-        const eppImgH = 10;
+        const eppImgW = 35;
+        const eppImgH = 100;
         if (eppImgData) {
             try {
                 doc.addImage(getBase64Data(eppImgData), 'PNG', 15, headingY + 22, eppImgW, eppImgH);
@@ -884,11 +983,17 @@ async function generateArcFlashPDFBytes() {
             ]
         });
 
-        const shockImgData = window.IMAGES_DATA ? window.IMAGES_DATA['shock'] : null;
+        const imgShockEl = document.getElementById('img_shock');
+        let shockIndex = null;
+        if (imgShockEl && imgShockEl.src) {
+            const match = imgShockEl.src.match(/\/(\d)\.png$/);
+            if (match) shockIndex = match[1];
+        }
+        const shockImgData = (shockIndex && window.IMAGES_DATA) ? window.IMAGES_DATA[shockIndex] : null;
         if (shockImgData) {
             try {
-                const imgW = 141; // 216 - 60 - 15 = 141mm
-                const imgH = imgW * (585 / 1201);
+                const imgW = 40; // 40mm width (square image)
+                const imgH = 40; // 40mm height
                 doc.addImage(getBase64Data(shockImgData), 'PNG', 60, doc.lastAutoTable.finalY + 5, imgW, imgH);
                 
                 // Set the dummy table below both the EPP image and the diagram
@@ -898,7 +1003,7 @@ async function generateArcFlashPDFBytes() {
                     body: []
                 });
             } catch(e) {
-                console.warn('Shock img add failed');
+                console.warn('Shock/Footwear img add failed in PDF');
                 const nextY = Math.max(headingY + 22 + eppImgH, doc.lastAutoTable.finalY + 10);
                 doc.autoTable({
                     startY: nextY,
@@ -927,7 +1032,7 @@ async function generateArcFlashPDFBytes() {
             head: [[{ content: '⚠ WARNING', colSpan: 4 }]],
             body: [
                 [{ content: 'Arc Flash & Shock Hazard\nAppropriate PPE Required', colSpan: 4, styles: { halign: 'center', fontStyle: 'bold', fontSize: 14 } }],
-                [{ content: 'ARC FLASH PROTECTION BOUNDARY AND REQUIRED PPE ABB Electrical Safety Calculator V1.6a Jan. 2024', colSpan: 4, styles: { fillColor: [40, 40, 40], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' } }],
+                [{ content: 'ARC FLASH PROTECTION BOUNDARY AND REQUIRED PPE ABB Electrical Safety Calculator V1.6c', colSpan: 4, styles: { fillColor: [40, 40, 40], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' } }],
                 ['Arc Flash boundary:', arcBoundary, 'Glove Class/ CAT:', ': ' + gloves],
                 ['Required PPE:', ppe, 'Footwear:', ': ' + footwear],
                 [{ content: 'SHOCK HAZARD PROTECTION BOUNDARIES', colSpan: 4, styles: { fillColor: [40, 40, 40], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' } }],
@@ -991,24 +1096,47 @@ async function buildArcFlashDocxBlob() {
     const serializer = new XMLSerializer();
 
     const eppImgData = window.IMAGES_DATA ? window.IMAGES_DATA[catLetter] : null;
-    let rIdPPE = null;
-    if (eppImgData) {
-        const base64Data = getBase64Data(eppImgData);
-        zip.file('word/media/ppe_image.png', base64Data, { base64: true });
+    const ppeBase64 = eppImgData ? getBase64Data(eppImgData) : null;
+    
+    // The shock index is usually 1-7, we can extract it from the DOM element lbl_gloves, or just grab the hidden shockIndex text if it's there.
+    // However, the easiest way is to extract it from the src of img_shock, but without touching the canvas.
+    const imgShockEl = document.getElementById('img_shock');
+    let shockIndex = null;
+    if (imgShockEl && imgShockEl.src) {
+        const match = imgShockEl.src.match(/\/(\d)\.png$/);
+        if (match) shockIndex = match[1];
+    }
+    const shockImgData = (shockIndex && window.IMAGES_DATA) ? window.IMAGES_DATA[shockIndex] : null;
+    const shockBase64 = shockImgData ? getBase64Data(shockImgData) : null;
 
-        let relsXmlText = await zip.file('word/_rels/document.xml.rels').async('string');
-        const relsDoc = parser.parseFromString(relsXmlText, 'application/xml');
-        let relationships = relsDoc.getElementsByTagNameNS('http://schemas.openxmlformats.org/package/2006/relationships', 'Relationships')[0];
-        if (!relationships) relationships = relsDoc.getElementsByTagName('Relationships')[0];
-        if (relationships) {
+    let rIdPPE = null;
+    let rIdShock = null;
+    
+    let relsXmlText = await zip.file('word/_rels/document.xml.rels').async('string');
+    const relsDoc = parser.parseFromString(relsXmlText, 'application/xml');
+    let relationships = relsDoc.getElementsByTagNameNS('http://schemas.openxmlformats.org/package/2006/relationships', 'Relationships')[0];
+    if (!relationships) relationships = relsDoc.getElementsByTagName('Relationships')[0];
+
+    if (relationships) {
+        if (ppeBase64) {
+            zip.file('word/media/ppe_image.png', ppeBase64, { base64: true });
             rIdPPE = 'rIdPPE' + Date.now();
             const newRel = relsDoc.createElementNS('http://schemas.openxmlformats.org/package/2006/relationships', 'Relationship');
             newRel.setAttribute('Id', rIdPPE);
             newRel.setAttribute('Type', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image');
             newRel.setAttribute('Target', 'media/ppe_image.png');
             relationships.appendChild(newRel);
-            zip.file('word/_rels/document.xml.rels', serializer.serializeToString(relsDoc));
         }
+        if (shockBase64) {
+            zip.file('word/media/shock_image.png', shockBase64, { base64: true });
+            rIdShock = 'rIdShock' + Date.now();
+            const newRel = relsDoc.createElementNS('http://schemas.openxmlformats.org/package/2006/relationships', 'Relationship');
+            newRel.setAttribute('Id', rIdShock);
+            newRel.setAttribute('Type', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image');
+            newRel.setAttribute('Target', 'media/shock_image.png');
+            relationships.appendChild(newRel);
+        }
+        zip.file('word/_rels/document.xml.rels', serializer.serializeToString(relsDoc));
     }
 
     let docXmlText = await zip.file('word/document.xml').async('string');
@@ -1090,14 +1218,12 @@ async function buildArcFlashDocxBlob() {
     newXmlText = newXmlText.replace(/w:val="FFFF00"/gi, 'w:val="000000"');
 
     // Replace (imagen PPE) placeholder
-    if (rIdPPE) {
-        const cx = 1008000;
-        const cy = 2880000;
-        const drawingXml = `</w:t></w:r><w:r><w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+    function getDrawingXml(rId, cx, cy, name, id) {
+        return `<w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
   <wp:inline distT="0" distB="0" distL="0" distR="0">
     <wp:extent cx="${cx}" cy="${cy}"/>
     <wp:effectExtent l="0" t="0" r="0" b="0"/>
-    <wp:docPr id="2" name="Imagen PPE" descr="PPE Image"/>
+    <wp:docPr id="${id}" name="${name}" descr="${name} Image"/>
     <wp:cNvGraphicsFramePr>
       <a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/>
     </wp:cNvGraphicsFramePr>
@@ -1105,11 +1231,11 @@ async function buildArcFlashDocxBlob() {
       <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
         <pic:pic>
           <pic:nvPicPr>
-            <pic:cNvPr id="2" name="Imagen PPE"/>
+            <pic:cNvPr id="${id}" name="${name}"/>
             <pic:cNvPicPr/>
           </pic:nvPicPr>
           <pic:blipFill>
-            <a:blip r:embed="${rIdPPE}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>
+            <a:blip r:embed="${rId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>
             <a:stretch><a:fillRect/></a:stretch>
           </pic:blipFill>
           <pic:spPr>
@@ -1123,8 +1249,29 @@ async function buildArcFlashDocxBlob() {
       </a:graphicData>
     </a:graphic>
   </wp:inline>
-</w:drawing></w:r><w:r><w:t>`;
-        newXmlText = newXmlText.replace(/\(imagen PPE\)/g, drawingXml);
+</w:drawing>`;
+    }
+
+    // Restore original dimensions for Word export
+    const cx = 1008000;   // 1 inch width
+    const cy = 2880000;  // 2.85 inch height
+    
+    let replacementXml = '';
+    if (rIdPPE && rIdShock) {
+        // Both images: put them in separate centered paragraphs, one below the other
+        replacementXml = `</w:t></w:r><w:r>${getDrawingXml(rIdPPE, cx, cy, "PPE", "2")}</w:r></w:p>` +
+                         `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r>${getDrawingXml(rIdShock, cx, cx, "Shock", "3")}</w:r></w:p>` +
+                         `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t>`;
+    } else if (rIdPPE) {
+        // Only PPE image
+        replacementXml = `</w:t></w:r><w:r>${getDrawingXml(rIdPPE, cx, cy, "PPE", "2")}</w:r><w:r><w:t>`;
+    } else if (rIdShock) {
+        // Only Shock image
+        replacementXml = `</w:t></w:r><w:r>${getDrawingXml(rIdShock, cx, cx, "Shock", "3")}</w:r><w:r><w:t>`;
+    }
+    
+    if (replacementXml !== '') {
+        newXmlText = newXmlText.replace(/\(imagen PPE\)/g, replacementXml);
     } else {
         newXmlText = newXmlText.replace(/\(imagen PPE\)/g, 'Imagen EPP no disponible');
     }
@@ -1649,9 +1796,9 @@ function createSymbolAt(type, left, top) {
         // --- Circle background color per symbol type ---
         const circleColorMap = {
             'bloqueo':             '#e3000b',
-            'aterramiento':        '#b45309',
+            'aterramiento':        '#ca8a04',
             'retorno':             '#059669',
-            'aterrizaje_temporal': '#d97706',
+            'aterrizaje_temporal': '#eab308',
             'maniobras':           '#1d4ed8',
             'verificacion_tension':'#7c3aed',
             'interconexion_corto': '#ea580c',
@@ -1826,9 +1973,9 @@ function refreshItemsList() {
 
     const colorMap = {
         'bloqueo':             '#e3000b',
-        'aterramiento':        '#b45309',
+        'aterramiento':        '#ca8a04',
         'retorno':             '#059669',
-        'aterrizaje_temporal': '#d97706',
+        'aterrizaje_temporal': '#eab308',
         'maniobras':           '#1d4ed8',
         'verificacion_tension':'#7c3aed',
         'interconexion_corto': '#ea580c',

@@ -1,222 +1,194 @@
 /**
- * pdfTemplateHelper.js  (v3)
+ * pdfTemplateHelper.js (v4)
  *
- * Provides window.pdfTemplateHelper.populateTemplate(inputs, eppImageBase64)
+ * Takes the DOCX template (window.DOCX_TEMPLATE_DATA – base64 string),
+ * fills the placeholders with the values supplied by `populateTemplate(inputs, eppImgBase64)`
+ * using **docx-preview** to render the DOCX to HTML, then captures the rendered HTML
+ * with **html2canvas** and finally creates a PDF with **jsPDF**.
  *
- * Uses jsPDF + jspdf-autotable to generate a PDF that matches the
- * Word (DOCX) template layout: System Information table, Shock Boundaries
- * table with EPP image, and the WARNING label table.
- *
- * Returns an ArrayBuffer with the PDF bytes.
+ * This approach guarantees that the generated PDF looks *exactly* like the Word
+ * document because we are re‑using the same layout engine that the browser uses to
+ * display the template.
  */
 
 (function () {
     'use strict';
 
-    // ---- Utility: extract pure base64 from a data-URI string ----
+    // ---------------------------------------------------------------------
+    // Helper: extract base64 part from a data‑URI (e.g. "data:image/png;base64,...")
+    // ---------------------------------------------------------------------
     function getBase64Data(dataUri) {
         if (!dataUri) return null;
-        if (dataUri.includes(',')) return dataUri.split(',')[1];
-        return dataUri;
+        return dataUri.includes(',') ? dataUri.split(',')[1] : dataUri;
     }
 
-    // ---- Main: populateTemplate ----
-    async function populateTemplate(inputs, eppImageBase64) {
-        console.log('pdfTemplateHelper v3: populateTemplate called');
+    // ---------------------------------------------------------------------
+    // Helper: replace all occurrences of a placeholder inside an element's
+    // textContent recursively. This works on the HTML produced by docx‑preview.
+    // ---------------------------------------------------------------------
+    function replacePlaceholders(root, map) {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+        let node;
+        while ((node = walker.nextNode())) {
+            let txt = node.nodeValue;
+            let changed = false;
+            for (const [ph, value] of Object.entries(map)) {
+                if (txt.includes(ph)) {
+                    txt = txt.split(ph).join(value);
+                    changed = true;
+                }
+            }
+            if (changed) node.nodeValue = txt;
+        }
+    }
 
+    // ---------------------------------------------------------------------
+    // Main API expected by app.js
+    // ---------------------------------------------------------------------
+    async function populateTemplate(inputs, eppImageBase64) {
+        console.log('pdfTemplateHelper v4: populateTemplate called');
+
+        // ---------------------------------------------------------------
+        // 1️⃣ Ensure required libraries are present
+        // ---------------------------------------------------------------
         if (!window.jspdf) {
-            console.error('pdfTemplateHelper: jsPDF is not loaded.');
+            console.error('pdfTemplateHelper: jsPDF not loaded');
             return null;
         }
+        if (!window.docx) {
+            console.error('pdfTemplateHelper: docx‑preview not loaded');
+            return null;
+        }
+        if (!window.html2canvas) {
+            console.error('pdfTemplateHelper: html2canvas not loaded');
+            return null;
+        }
+
+        // ---------------------------------------------------------------
+        // 2️⃣ Decode the DOCX template (base64) into a Uint8Array
+        // ---------------------------------------------------------------
+        if (!window.DOCX_TEMPLATE_DATA) {
+            console.error('pdfTemplateHelper: DOCX_TEMPLATE_DATA missing');
+            return null;
+        }
+        const docxBase64 = getBase64Data(window.DOCX_TEMPLATE_DATA);
+        const docxBytes = Uint8Array.from(atob(docxBase64), c => c.charCodeAt(0));
+
+        // ---------------------------------------------------------------
+        // 3️⃣ Render DOCX to a hidden container using docx‑preview
+        // ---------------------------------------------------------------
+        const container = document.createElement('div');
+        container.style.position = 'absolute';
+        container.style.left = '-9999px';
+        container.style.top = '-9999px';
+        container.style.width = '210mm';   // A4 width, close to Letter
+        container.style.minHeight = '297mm';
+        document.body.appendChild(container);
 
         try {
-            var pdfBytes = buildPdfFromInputs(inputs || {}, eppImageBase64);
-            console.log('pdfTemplateHelper v3: PDF generated, bytes:', pdfBytes ? pdfBytes.byteLength : 0);
-            return pdfBytes;
-        } catch (err) {
-            console.error('pdfTemplateHelper v3: FULL ERROR:', err);
-            console.error('pdfTemplateHelper v3: Error message:', err.message);
-            console.error('pdfTemplateHelper v3: Error stack:', err.stack);
+            await window.docx.renderAsync(docxBytes, container, {
+                // No special options needed – default rendering is fine
+            });
+        } catch (e) {
+            console.error('pdfTemplateHelper: docx‑preview render error', e);
+            document.body.removeChild(container);
             return null;
         }
-    }
 
-    // ---- Build a PDF matching the Word template layout ----
-    function buildPdfFromInputs(inputs, eppImageBase64) {
-        var jsPDF = window.jspdf.jsPDF;
-        var doc = new jsPDF('p', 'mm', 'letter');
+        // ---------------------------------------------------------------
+        // 4️⃣ Build a map of the placeholders used in the Word template
+        // ---------------------------------------------------------------
+        const ph = {
+            '{{systemVoltage}}': inputs.systemVoltage || '--',
+            '{{upstreamBreaker}}': inputs.upstreamBreaker || '--',
+            '{{shortCircuit}}': inputs.shortCircuit || '--',
+            '{{energyStorage}}': inputs.energyStorage || '--',
+            '{{openingTime}}': inputs.openingTime || '--',
+            '{{workingDistance}}': inputs.workingDistance || '--',
+            '{{powerForArc}}': inputs.powerForArc || '--',
+            '{{incidentEnergy}}': inputs.incidentEnergy || '--',
+            '{{arcFlashBoundary}}': inputs.arcFlashBoundary || '--',
+            '{{limitedApproach}}': inputs.limitedApproach || '--',
+            '{{restrictedApproach2}}': inputs.restrictedApproach2 || '--',
+            '{{exposedMovable}}': inputs.exposedMovable || '--',
+            '{{glove}}': inputs.glove || '--',
+            '{{requiredPPE}}': inputs.requiredPPE || '--',
+            '{{footwear}}': inputs.footwear || '--',
+            '{{shockHazard}}': inputs.shockHazard || '--',
+            '{{busEquipmentId}}': inputs.busEquipmentId || '--',
+            '{{protectiveDevice}}': inputs.protectiveDevice || '--',
+            '{{assessmentDate}}': inputs.assessmentDate || '--',
+            '{{catLetter}}': (inputs.catLetter || '').toUpperCase()
+        };
 
-        // ---- Collect values with fallback ----
-        var voltage       = inputs.systemVoltage || '--';
-        var breaker       = inputs.upstreamBreaker || '--';
-        var isc           = inputs.shortCircuit || '--';
-        var ecap          = inputs.energyStorage || '--';
-        var time          = inputs.openingTime || '--';
-        var workDist      = inputs.workingDistance || '--';
-        var power         = inputs.powerForArc || '--';
-        var energy        = inputs.incidentEnergy || '--';
-        var arcBoundary   = inputs.arcFlashBoundary || inputs.arcFlashApproach || '--';
-        var limited       = inputs.limitedApproach || '--';
-        var restricted    = inputs.restrictedApproach || inputs.restrictedApproach2 || '--';
-        var exposed       = inputs.exposedMovable || inputs.limitsApproach || '--';
-        var gloves        = inputs.glove || '--';
-        var ppe           = inputs.requiredPPE || '--';
-        var footwear      = inputs.footwear || '--';
-        var shockV        = inputs.shockHazard || '--';
-        var equipId       = inputs.busEquipmentId || '--';
-        var device        = inputs.protectiveDevice || '--';
-        var dateVal       = inputs.assessmentDate || '--';
+        // ---------------------------------------------------------------
+        // 5️⃣ Replace placeholders inside the rendered HTML
+        // ---------------------------------------------------------------
+        replacePlaceholders(container, ph);
 
-        // =====================================================
-        //  TABLE 1: System Information
-        // =====================================================
-        doc.setFontSize(16);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Anexo 01  System Information', 15, 20);
-
-        doc.autoTable({
-            startY: 25,
-            theme: 'grid',
-            headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
-            bodyStyles: { textColor: [0, 0, 0] },
-            head: [[{ content: 'System Information', colSpan: 4, styles: { halign: 'center' } }]],
-            body: [
-                ['System Voltage', voltage, 'V', ''],
-                ['Upstream Overcurrent Breaker (device)', breaker, 'A', ''],
-                ['Short Circuit Current (Isc)', parseFloat(isc).toFixed(1), 'kA', ''],
-                ['Energy Storage (e.g. Capacitors)', parseFloat(ecap).toFixed(1), 'kJ', ''],
-                ['Opening Time', parseFloat(time).toFixed(2), 'Sec', ''],
-                ['Working Distance (From the arc source)', workDist, '(*)', ''],
-                ['Power - For Arc Flash prot. Boundaries', power, 'kVA (*)', ''],
-                ['Incident Energy', energy, 'cal/cm\u00B2', '']
-            ],
-            columnStyles: {
-                0: { cellWidth: 90 },
-                1: { cellWidth: 35, fontStyle: 'bold', halign: 'right' },
-                2: { cellWidth: 30 },
-                3: { cellWidth: 25 }
-            }
-        });
-
-        // =====================================================
-        //  Section: Electrical Safety Analysis
-        // =====================================================
-        var headingY = doc.lastAutoTable.finalY + 12;
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text('An\u00E1lisis de seguridad el\u00E9ctrica', 15, headingY);
-
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        doc.text('Frontera de protecci\u00F3n de arco y choque el\u00E9ctrico Distancias para instalaci\u00F3n de barricada', 15, headingY + 6);
-        doc.text('durante verificaci\u00F3n de Seven Steps y se\u00F1alizaci\u00F3n perimetral', 15, headingY + 11);
-
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'italic');
-        doc.text('According to NFPA70E: Table 130.4(E)(a)', 15, headingY + 17);
-
-        // =====================================================
-        //  EPP (PPE) Image — left side
-        // =====================================================
-        var eppImgW = 3.5;
-        var eppImgH = 10;
+        // ---------------------------------------------------------------
+        // 6️⃣ If an EPP image is provided, inject it in the place where the
+        //    template contains the token "(imagen PPE)" (the same token used in the
+        //    DOCX generation code). We replace the token text node with an <img>.
+        // ---------------------------------------------------------------
         if (eppImageBase64) {
-            try {
-                var imgData = getBase64Data(eppImageBase64);
-                if (imgData) {
-                    doc.addImage(imgData, 'PNG', 15, headingY + 22, eppImgW, eppImgH);
-                }
-            } catch (e) {
-                console.warn('pdfTemplateHelper: EPP img add failed:', e);
+            const imgBase64 = getBase64Data(eppImageBase64);
+            const img = document.createElement('img');
+            img.src = `data:image/png;base64,${imgBase64}`;
+            img.style.maxWidth = '100%';
+            // Find the token text node
+            const tokenNode = Array.from(container.querySelectorAll('*')).find(el =>
+                el.childNodes.length === 1 && el.childNodes[0].nodeType === Node.TEXT_NODE && el.textContent.includes('(imagen PPE)')
+            );
+            if (tokenNode) {
+                tokenNode.textContent = tokenNode.textContent.replace('(imagen PPE)', '').trim();
+                tokenNode.appendChild(img);
             }
         }
 
-        // =====================================================
-        //  TABLE 2: Shock Boundaries (right of EPP image)
-        // =====================================================
-        doc.autoTable({
-            startY: headingY + 22,
-            margin: { left: 60 },
-            theme: 'grid',
-            headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
-            head: [['Shock Protection Approach Boundaries and Arc Flash Boundary', '', '']],
-            body: [
-                ['Arc Flash Boundary', 'Limited Approach Boundary', 'Restricted Approach Boundary'],
-                [arcBoundary, limited, restricted],
-                [exposed, '', '']
-            ]
-        });
-
-        // Shock diagram image (if available)
-        var shockImgData = (window.IMAGES_DATA && window.IMAGES_DATA['shock']) ? window.IMAGES_DATA['shock'] : null;
-        if (shockImgData) {
-            try {
-                var sImgData = getBase64Data(shockImgData);
-                var imgW = 141;
-                var imgH = imgW * (585 / 1201);
-                doc.addImage(sImgData, 'PNG', 60, doc.lastAutoTable.finalY + 5, imgW, imgH);
-
-                var nextY = Math.max(headingY + 22 + eppImgH, doc.lastAutoTable.finalY + imgH + 10);
-                doc.autoTable({ startY: nextY, body: [] });
-            } catch (e) {
-                console.warn('pdfTemplateHelper: Shock img failed:', e);
-                var nextY2 = Math.max(headingY + 22 + eppImgH, doc.lastAutoTable.finalY + 10);
-                doc.autoTable({ startY: nextY2, body: [] });
-            }
-        } else {
-            var nextY3 = Math.max(headingY + 22 + eppImgH, doc.lastAutoTable.finalY + 10);
-            doc.autoTable({ startY: nextY3, body: [] });
+        // ---------------------------------------------------------------
+        // 7️⃣ Capture the whole container as a canvas using html2canvas
+        // ---------------------------------------------------------------
+        let canvas;
+        try {
+            canvas = await window.html2canvas(container, {scale: 2, useCORS: true});
+        } catch (e) {
+            console.error('pdfTemplateHelper: html2canvas error', e);
+            document.body.removeChild(container);
+            return null;
         }
 
-        // =====================================================
-        //  TABLE 3: WARNING LABEL
-        // =====================================================
-        var lblY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : 150;
-        if (lblY > 230) {
-            doc.addPage();
+        // ---------------------------------------------------------------
+        // 8️⃣ Create a PDF with jsPDF and add the captured image
+        // ---------------------------------------------------------------
+        const jsPDF = window.jspdf.jsPDF;
+        const pdf = new jsPDF('p', 'mm', 'letter');
+        const imgData = canvas.toDataURL('image/png');
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        // Calculate image dimensions keeping aspect ratio
+        const imgProps = pdf.getImageProperties(imgData);
+        const imgRatio = imgProps.width / imgProps.height;
+        let imgWidth = pageWidth - 20; // 10 mm margins each side
+        let imgHeight = imgWidth / imgRatio;
+        if (imgHeight > pageHeight - 20) {
+            imgHeight = pageHeight - 20;
+            imgWidth = imgHeight * imgRatio;
         }
+        pdf.addImage(imgData, 'PNG', (pageWidth - imgWidth) / 2, 10, imgWidth, imgHeight);
 
-        doc.autoTable({
-            startY: doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : 20,
-            theme: 'grid',
-            headStyles: {
-                fillColor: [237, 139, 0],
-                textColor: [0, 0, 0],
-                fontStyle: 'bold',
-                fontSize: 16,
-                halign: 'center'
-            },
-            bodyStyles: { textColor: [0, 0, 0], fontSize: 10 },
-            head: [[{ content: '\u26A0 WARNING', colSpan: 4 }]],
-            body: [
-                [{ content: 'Arc Flash & Shock Hazard\nAppropriate PPE Required', colSpan: 4, styles: { halign: 'center', fontStyle: 'bold', fontSize: 14 } }],
-                [{ content: 'ARC FLASH PROTECTION BOUNDARY AND REQUIRED PPE ABB Electrical Safety Calculator V1.6a Jan. 2024', colSpan: 4, styles: { fillColor: [40, 40, 40], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' } }],
-                ['Arc Flash boundary:', arcBoundary, 'Glove Class/ CAT:', ': ' + gloves],
-                ['Required PPE:', ppe, 'Footwear:', ': ' + footwear],
-                [{ content: 'SHOCK HAZARD PROTECTION BOUNDARIES', colSpan: 4, styles: { fillColor: [40, 40, 40], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' } }],
-                ['Shock Hazard:', shockV, 'Limited Approach:', limited],
-                ['Bus/Equipment ID:', equipId, 'Restricted Approach:', restricted],
-                ['Protective Device (Upstream):', device, 'Assessment Date:', dateVal],
-                [{ content: 'THIS LABEL IS FOR TEMPORARY USE AND MUST BE REMOVED AFTER SERVICE IS COMPLETED', colSpan: 4, styles: { halign: 'center', fontStyle: 'italic', fontSize: 8, textColor: [120, 120, 120] } }],
-                [{ content: 'IMPORTANT: This label was generated using estimated values and may be used in the absence of a formal arc flash risk assessment.', colSpan: 4, styles: { halign: 'center', fontSize: 8, textColor: [120, 120, 120] } }]
-            ],
-            columnStyles: {
-                0: { fontStyle: 'bold', cellWidth: 48 },
-                1: { textColor: [0, 0, 139], fontStyle: 'bold' },
-                2: { fontStyle: 'bold', cellWidth: 48 },
-                3: { textColor: [0, 0, 139], fontStyle: 'bold' }
-            }
-        });
+        // ---------------------------------------------------------------
+        // 9️⃣ Clean up the temporary container
+        // ---------------------------------------------------------------
+        document.body.removeChild(container);
 
-        console.log('pdfTemplateHelper v3: All tables drawn, generating output...');
-        return doc.output('arraybuffer');
+        console.log('pdfTemplateHelper v4: PDF generated');
+        return pdf.output('arraybuffer');
     }
 
-    // ---- Expose on window ----
-    window.pdfTemplateHelper = {
-        populateTemplate: populateTemplate
-    };
-
-    console.log('pdfTemplateHelper: loaded and ready (v3)');
-
+    // ---------------------------------------------------------------------
+    // Expose the public API
+    // ---------------------------------------------------------------------
+    window.pdfTemplateHelper = {populateTemplate};
+    console.log('pdfTemplateHelper: loaded and ready (v4)');
 })();
