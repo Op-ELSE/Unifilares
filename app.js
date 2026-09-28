@@ -252,34 +252,15 @@ function zoomToFit() {
     canvas.requestRenderAll();
 }
 
+// Background is STATIC — panning disabled. Only zoom (wheel) and crop are allowed.
 canvas.on('mouse:down', function (opt) {
-    const evt = opt.e;
-    // 3 in Fabric or 2 in native JS represents the right mouse button (anticlick)
-    if (opt.button === 3 || evt.button === 2) {
-        this.isDragging = true;
-        this.selection = false;
-        this.lastPosX = evt.clientX;
-        this.lastPosY = evt.clientY;
-    }
+    // Right-click drag panning intentionally removed to keep background fixed.
 });
 
 document.getElementById('btnZoomToFit').addEventListener('click', zoomToFit);
 
-// Handle Panning (Right Click Drag)
 canvas.on('mouse:move', function (opt) {
-    if (this.isDragging) {
-        const e = opt.e;
-        const vpt = this.viewportTransform;
-        vpt[4] += e.clientX - this.lastPosX;
-        vpt[5] += e.clientY - this.lastPosY;
-        
-        // Apply the same strict constraints during panning
-        applyViewportConstraints();
-
-        this.requestRenderAll();
-        this.lastPosX = e.clientX;
-        this.lastPosY = e.clientY;
-    }
+    // No drag panning — background stays in place.
 });
 
 canvas.on('mouse:up', function (opt) {
@@ -730,51 +711,17 @@ if (btnAppendArcFlashToPdf) {
         if (window.lucide) window.lucide.createIcons();
 
         try {
-            // 1. Generar el DOCX con los datos actuales de la UI
-            const blobContent = await buildArcFlashDocxBlob();
+            const pdfArrayBuffer = await generatePdfViaTemplate();
+            if (!pdfArrayBuffer) throw new Error('La generación del PDF falló.');
 
-            // 2. Crear FormData con el DOCX
-            const formData = new FormData();
-            formData.append('file', blobContent, 'reporte.docx');
-
-            // 3. Enviar al backend Node.js/LibreOffice
-            const response = await fetch(BACKEND_URL, {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                const errJson = await response.json().catch(() => ({}));
-                throw new Error(errJson.error || `Error del servidor: ${response.status}`);
-            }
-
-            // 4. Leer como arrayBuffer y añadir a addedArcFlashReports
-            const pdfArrayBuffer = await response.arrayBuffer();
             addedArcFlashReports.push(pdfArrayBuffer);
-            alert('Reporte de Arc Flash añadido con éxito (usando tu nuevo formato de Word). Se incluirá al final del PDF consolidado al hacer clic en "Descargar".');
-            
-            // Close modal
+            alert('Reporte de Arc Flash añadido con éxito. Se incluirá al final del PDF consolidado al hacer clic en "Descargar".');
+
             const modal = document.getElementById('arcFlashModal');
             if (modal) modal.classList.add('hidden');
-
         } catch (err) {
-            console.warn('[Añadir Reporte PDF] El servidor local falló o no está corriendo. Intentando generación local en el navegador...', err);
-            try {
-                // Generación local en navegador (fallback offline)
-                const pdfArrayBuffer = await generateArcFlashPDFBytes();
-                if (!pdfArrayBuffer) {
-                    throw new Error("La generación local de PDF falló.");
-                }
-                addedArcFlashReports.push(pdfArrayBuffer);
-                alert('Reporte de Arc Flash añadido con éxito (generado localmente en tu navegador ya que el servidor no está corriendo). Se incluirá al final del PDF consolidado al hacer clic en "Descargar".');
-                
-                // Close modal
-                const modal = document.getElementById('arcFlashModal');
-                if (modal) modal.classList.add('hidden');
-            } catch (fallbackErr) {
-                console.error('[Añadir Reporte PDF Fallback]', fallbackErr);
-                alert('Error generando o añadiendo el reporte PDF:\n' + err.message + '\n\n¿Está corriendo el servidor?\n  node server.js\n\n(El motor local de reserva también falló: ' + fallbackErr.message + ')');
-            }
+            console.error('[Añadir Reporte PDF]', err);
+            alert('Error generando el reporte PDF:\n' + err.message);
         }
 
         btnAppendArcFlashToPdf.disabled = false;
@@ -783,14 +730,16 @@ if (btnAppendArcFlashToPdf) {
     });
 }
 
+
 // Export label to DOCX button
 const btnExportArcDocx = document.getElementById('btnExportArcDocx');
 if (btnExportArcDocx) {
     btnExportArcDocx.addEventListener('click', exportLabelToDocx);
 }
 
-// Export label to PDF button — envía el DOCX al backend Node.js → LibreOffice → PDF real
-const BACKEND_URL = 'http://localhost:3000/convert';
+// Export label to PDF button — uses DOCX template → docx-preview → html2canvas → jsPDF
+// No LibreOffice or remote server required.
+const BACKEND_URL = 'http://localhost:3000/convert'; // kept for reference only, unused
 
 const btnExportArcPdf = document.getElementById('btnExportArcPdf');
 if (btnExportArcPdf) {
@@ -801,30 +750,14 @@ if (btnExportArcPdf) {
         if (window.lucide) window.lucide.createIcons();
 
         try {
-            // 1. Generar el DOCX con los datos actuales de la UI
-            const blobContent = await buildArcFlashDocxBlob();
+            const pdfBytes = await generatePdfViaTemplate();
+            if (!pdfBytes) throw new Error('La generación del PDF falló.');
 
-            // 2. Crear FormData con el DOCX
-            const formData = new FormData();
-            formData.append('file', blobContent, 'reporte.docx');
-
-            // 3. Enviar al backend Node.js/LibreOffice
-            const response = await fetch(BACKEND_URL, {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                const errJson = await response.json().catch(() => ({}));
-                throw new Error(errJson.error || `Error del servidor: ${response.status}`);
-            }
-
-            // 4. Descargar el PDF resultante
-            const pdfBlob = await response.blob();
+            const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
             const url     = URL.createObjectURL(pdfBlob);
             const link    = document.createElement('a');
 
-            const equipId     = document.getElementById('lbl_equipId')?.textContent || 'report';
+            const equipId      = document.getElementById('lbl_equipId')?.textContent || 'report';
             const cleanEquipId = equipId.replace(/[^a-zA-Z0-9]/g, '_') || 'report';
 
             link.href     = url;
@@ -833,32 +766,9 @@ if (btnExportArcPdf) {
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
-
         } catch (err) {
-            console.warn('[PDF Export] El servidor local falló o no está corriendo. Intentando generación local en el navegador...', err);
-            try {
-                // Generación local en navegador (fallback offline)
-                const pdfBytes = await generateArcFlashPDFBytes();
-                if (!pdfBytes) {
-                    throw new Error("La generación local de PDF falló.");
-                }
-                const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-                const url     = URL.createObjectURL(pdfBlob);
-                const link    = document.createElement('a');
-
-                const equipId     = document.getElementById('lbl_equipId')?.textContent || 'report';
-                const cleanEquipId = equipId.replace(/[^a-zA-Z0-9]/g, '_') || 'report';
-
-                link.href     = url;
-                link.download = `Anexo_Calculadora_Arc_Flash_${cleanEquipId}.pdf`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-            } catch (fallbackErr) {
-                console.error('[PDF Export Fallback]', fallbackErr);
-                alert('Error generando PDF:\n' + err.message + '\n\n¿Está corriendo el servidor?\n  node server.js\n\n(El motor local de reserva también falló: ' + fallbackErr.message + ')');
-            }
+            console.error('[PDF Export]', err);
+            alert('Error generando PDF:\n' + err.message);
         }
 
         btnExportArcPdf.disabled = false;
@@ -867,6 +777,7 @@ if (btnExportArcPdf) {
     });
 }
 
+
 // Helper to extract base64 data from a data URI
 function getBase64Data(dataUri) {
     if (!dataUri) return null;
@@ -874,6 +785,85 @@ function getBase64Data(dataUri) {
     return dataUri;
 }
 
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// generatePdfViaTemplate()
+// Builds the PDF using the DOCX template → docx-preview → html2canvas → jsPDF.
+// Both "Exportar PDF" and "Añadir" buttons call this function.
+// Returns ArrayBuffer of the PDF, or null on error.
+// ─────────────────────────────────────────────────────────────────────────────
+async function generatePdfViaTemplate() {
+    if (!window.pdfTemplateHelper) {
+        alert('El módulo pdfTemplateHelper no está cargado.');
+        return null;
+    }
+
+    // ── Collect all UI values ──────────────────────────────────────────────
+    const energy      = document.getElementById('lbl_energy')?.textContent || '--';
+    const arcBoundary = document.getElementById('lbl_arcBoundary')?.textContent || '--';
+    const ppe         = document.getElementById('lbl_ppe')?.textContent || '--';
+    const gloves      = document.getElementById('lbl_gloves')?.textContent || '--';
+    const footwear    = document.getElementById('lbl_footwear')?.textContent || '--';
+    const shockV      = document.getElementById('lbl_shockV')?.textContent || '--';
+    const limited     = document.getElementById('lbl_limited')?.textContent || '--';
+    const restricted  = document.getElementById('lbl_restricted')?.textContent || '--';
+    const limitedMov  = document.getElementById('lbl_limitedMovable')?.textContent || '--';
+    const equipId     = document.getElementById('lbl_equipId')?.textContent || '--';
+    const device      = document.getElementById('lbl_device')?.textContent || '--';
+    const dateVal     = document.getElementById('lbl_date')?.textContent || '--';
+    const category    = document.getElementById('lbl_cat')?.textContent || '--';
+    const catLetter   = category.replace('CAT ', '').trim();
+
+    const voltage = document.getElementById('af_voltage')?.value || '--';
+    const breaker = document.getElementById('af_breaker')?.value || '--';
+    const isc     = document.getElementById('af_isc')?.value || '--';
+    const ecap    = document.getElementById('af_ecap')?.value || '--';
+    const time    = document.getElementById('af_time')?.value || '--';
+
+    const vNum     = parseFloat(voltage) || 0;
+    const bNum     = parseFloat(breaker) || 0;
+    const powerVal = ((vNum * Math.sqrt(3) * bNum) / 1000).toFixed(1);
+
+    const inputs = {
+        systemVoltage:      voltage,
+        upstreamBreaker:    breaker,
+        shortCircuit:       parseFloat(isc).toFixed(1),
+        energyStorage:      parseFloat(ecap).toFixed(1),
+        openingTime:        parseFloat(time).toFixed(2),
+        workingDistance:    vNum <= 600 ? '455mm (18 in)' : '910mm (36 in)',
+        powerForArc:        powerVal,
+        incidentEnergy:     energy,
+        arcFlashBoundary:   arcBoundary,
+        limitedApproach:    limited,
+        restrictedApproach2:restricted,
+        exposedMovable:     limitedMov,
+        glove:              gloves,
+        requiredPPE:        ppe,
+        footwear:           footwear,
+        shockHazard:        shockV,
+        busEquipmentId:     equipId,
+        protectiveDevice:   device,
+        assessmentDate:     dateVal,
+        catLetter:          catLetter,
+    };
+
+    // ── Resolve EPP image (A/B/C/D) ───────────────────────────────────────
+    const eppImgData = (window.IMAGES_DATA && catLetter) ? window.IMAGES_DATA[catLetter] : null;
+
+    // ── Resolve shock/footwear image (1-7) ────────────────────────────────
+    const imgShockEl = document.getElementById('img_shock');
+    let shockImgData = null;
+    if (imgShockEl && imgShockEl.src) {
+        const match = imgShockEl.src.match(/\/(\d)\.png$/);
+        if (match) {
+            const shockIndex = match[1];
+            shockImgData = (window.IMAGES_DATA && shockIndex) ? window.IMAGES_DATA[shockIndex] : null;
+        }
+    }
+
+    return await window.pdfTemplateHelper.populateTemplate(inputs, eppImgData, shockImgData);
+}
 
 
 async function generateArcFlashPDFBytes() {
