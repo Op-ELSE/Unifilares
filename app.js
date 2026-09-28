@@ -225,7 +225,7 @@ canvas.on('mouse:wheel', function (opt) {
     if (currentPdfPage) {
         pdfRerenderTimer = setTimeout(() => {
             renderPDFBackground(currentPdfPage, canvas.getZoom());
-        }, 50); // Near-instant clarity
+        }, 250); // Debounce — wait for scroll to stop before re-rendering
     }
 });
 
@@ -1339,23 +1339,36 @@ function resetCanvasSize(width, height) {
 }
 
 function renderImageToCanvas(file) {
-    const reader = new FileReader();
-    reader.onload = function (f) {
-        const data = f.target.result;
-        fabric.Image.fromURL(data, function (img) {
-            resetCanvasSize(img.width, img.height);
-            canvas.setBackgroundImage(img, () => {
-                zoomToFit();
-                canvas.renderAll();
-            }, {
-                originX: 'left',
-                originY: 'top',
-                left: 0,
-                top: 0,
-            });
+    file.arrayBuffer().then(buffer => {
+        window.originalUnifilarBuffer = buffer;
+    });
+
+    const objectUrl = URL.createObjectURL(file);
+    fabric.Image.fromURL(objectUrl, function (img) {
+        URL.revokeObjectURL(objectUrl);
+        const maxDim = Math.max(img.width, img.height);
+        let scale = 1.0;
+        if (maxDim > 4096) {
+            scale = 4096 / maxDim;
+        }
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+
+        img.set({
+            scaleX: scale,
+            scaleY: scale,
+            originX: 'left',
+            originY: 'top',
+            left: 0,
+            top: 0
         });
-    };
-    reader.readAsDataURL(file);
+
+        resetCanvasSize(w, h);
+        canvas.setBackgroundImage(img, () => {
+            zoomToFit();
+            canvas.renderAll();
+        });
+    });
 }
 
 function renderHTMLToCanvas(file) {
@@ -1397,16 +1410,17 @@ async function renderPDFToCanvas(file) {
         const page = await pdf.getPage(1);
         currentPdfPage = page;
 
-        // Maximize quality: target ~16000px (stable browser limit)
-        const rawVP   = page.getViewport({ scale: 1.0 });
-        const maxDim  = Math.max(rawVP.width, rawVP.height);
-        pdfBaseScale  = Math.min(20.0, Math.max(4.0, 16000 / maxDim));
-        
+        // Target 4096px for initial load — fast and plenty sharp for screen.
+        // Zoom re-render (debounced) will sharpen further when user pauses.
+        const rawVP  = page.getViewport({ scale: 1.0 });
+        const maxDim = Math.max(rawVP.width, rawVP.height);
+        pdfBaseScale = Math.min(8.0, Math.max(2.0, 4096 / maxDim));
+
         let targetW = Math.round(rawVP.width  * pdfBaseScale);
         let targetH = Math.round(rawVP.height * pdfBaseScale);
 
-        if (targetW > 16000 || targetH > 16000) {
-            const ratio = 16000 / Math.max(targetW, targetH);
+        if (targetW > 4096 || targetH > 4096) {
+            const ratio = 4096 / Math.max(targetW, targetH);
             targetW = Math.round(targetW * ratio);
             targetH = Math.round(targetH * ratio);
             pdfBaseScale *= ratio;
@@ -1433,56 +1447,67 @@ async function renderPDFToCanvas(file) {
     }
 }
 
+
 /**
  * Renders the stored PDF page at a resolution appropriate for the current
  * zoom level and updates the Fabric background — without clearing the canvas.
  * zoomFactor: current fabric zoom value (1.0 = no zoom)
  */
+let _pdfRenderBusy = false; // Guard against concurrent renders
 async function renderPDFBackground(page, zoomFactor) {
-    // Cap effective zoom and force a minimum high-DPI density
-    const ez = Math.max(1.0, Math.min(10.0, zoomFactor));
-    const dpr = Math.max(2.0, window.devicePixelRatio || 1); 
-    let renderScale = pdfBaseScale * ez * dpr;
-    
-    const rawVP = page.getViewport({ scale: 1.0 });
-    const maxRenderDim = 16384; // Safe browser limit for high-res canvases
-    if (rawVP.width * renderScale > maxRenderDim || rawVP.height * renderScale > maxRenderDim) {
-        renderScale = maxRenderDim / Math.max(rawVP.width, rawVP.height);
-    }
-    
-    const viewport = page.getViewport({ scale: renderScale });
+    if (_pdfRenderBusy) return; // Skip if a render is already in progress
+    _pdfRenderBusy = true;
+    try {
+        // Cap zoom amplification at 3× to avoid giant canvases at high zoom
+        const ez  = Math.max(1.0, Math.min(3.0, zoomFactor));
+        // Cap DPR at 2 — higher values don't improve perceived quality
+        const dpr = Math.min(2.0, window.devicePixelRatio || 1);
+        let renderScale = pdfBaseScale * ez * dpr;
 
-    const tmpCanvas = document.createElement('canvas');
-    tmpCanvas.width  = viewport.width;
-    tmpCanvas.height = viewport.height;
-    const ctx = tmpCanvas.getContext('2d');
-    
-    // For technical drawings, we want SHARP edges, not blurry smoothing
-    ctx.imageSmoothingEnabled = false;
-    
-    await page.render({ canvasContext: ctx, viewport, intent: 'print' }).promise;
+        const rawVP = page.getViewport({ scale: 1.0 });
+        const maxRenderDim = 8192; // Stay well within browser canvas limits
+        if (rawVP.width * renderScale > maxRenderDim || rawVP.height * renderScale > maxRenderDim) {
+            renderScale = maxRenderDim / Math.max(rawVP.width, rawVP.height);
+        }
 
-    const dataUrl = tmpCanvas.toDataURL('image/jpeg', 0.85);
+        const viewport = page.getViewport({ scale: renderScale });
 
-    await new Promise((resolve) => {
-        fabric.Image.fromURL(dataUrl, function(img) {
-            img.set({
-                scaleX:  pdfBaseW / viewport.width,
-                scaleY:  pdfBaseH / viewport.height,
-                originX: 'left',
-                originY: 'top',
-                left:    0,
-                top:     0,
-                imageSmoothing: false // Keep text sharp, not blurry
-            });
+        const tmpCanvas = document.createElement('canvas');
+        tmpCanvas.width  = viewport.width;
+        tmpCanvas.height = viewport.height;
+        const ctx = tmpCanvas.getContext('2d');
 
-            canvas.setBackgroundImage(img, () => {
-                canvas.renderAll();
-                resolve();
+        // For technical drawings, we want SHARP edges, not blurry smoothing
+        ctx.imageSmoothingEnabled = false;
+
+        await page.render({ canvasContext: ctx, viewport, intent: 'display' }).promise;
+
+        // PNG is lossless and faster to encode than JPEG for line-art
+        const dataUrl = tmpCanvas.toDataURL('image/png');
+
+        await new Promise((resolve) => {
+            fabric.Image.fromURL(dataUrl, function(img) {
+                img.set({
+                    scaleX:  pdfBaseW / viewport.width,
+                    scaleY:  pdfBaseH / viewport.height,
+                    originX: 'left',
+                    originY: 'top',
+                    left:    0,
+                    top:     0,
+                    imageSmoothing: false // Keep text sharp, not blurry
+                });
+
+                canvas.setBackgroundImage(img, () => {
+                    canvas.renderAll();
+                    resolve();
+                });
             });
         });
-    });
+    } finally {
+        _pdfRenderBusy = false;
+    }
 }
+
 
 // --- Tools: File Adjustments (Rotate, Flip, Crop) ---
 document.getElementById('btnRotateLeft').addEventListener('click', () => rotateBackground(-90));
@@ -1765,7 +1790,7 @@ function createSymbolAt(type, left, top) {
         iconGroup = new fabric.Group([lineIn, pivot, lineOut1, lineOut2, arm1, arm2], { left, top });
     }
     else if (type === 'aterrizaje_temporal') {
-        defaultText = 'Aterrizaje Temporal';
+        defaultText = 'Aterramiento Temporal';
         const line = new fabric.Line([20, 10, 20, 30], { fill: 'white', stroke: 'white', strokeWidth: 3 });
         const p1 = new fabric.Line([0, 30, 40, 30], { fill: 'white', stroke: 'white', strokeWidth: 3 });
         const p2 = new fabric.Line([8, 38, 32, 38], { fill: 'white', stroke: 'white', strokeWidth: 3 });
@@ -1881,33 +1906,10 @@ function createSymbolAt(type, left, top) {
         canvas.setActiveObject(realGroup);
         refreshItemsList();
 
-        // Infinite pulsing animation for radar rings
-        function pulseRing(r, initialRadius, targetRadius, delay) {
-            setTimeout(() => {
-                if (!r || !canvas.getObjects().includes(realGroup)) return; // stop if deleted
-                
-                r.animate('radius', targetRadius, {
-                    duration: 2000,
-                    onChange: () => canvas.requestRenderAll(),
-                    onComplete: () => {
-                        r.set({
-                            radius: initialRadius,
-                            opacity: r === ring1 ? 0.40 : 0.20
-                        });
-                        pulseRing(r, initialRadius, targetRadius, 0);
-                    },
-                    easing: fabric.util.ease.easeOutQuad
-                });
-
-                r.animate('opacity', 0, {
-                    duration: 2000,
-                    easing: fabric.util.ease.easeOutQuad
-                });
-            }, delay);
-        }
-
-        pulseRing(ring1, circleRadius + 7, circleRadius + 22, 0);
-        pulseRing(ring2, circleRadius + 16, circleRadius + 38, 1000);
+        // Static radar rings (no continuous 60fps canvas re-renders, keeps platform fast)
+        ring1.set({ radius: circleRadius + 7, opacity: 0.40 });
+        ring2.set({ radius: circleRadius + 16, opacity: 0.20 });
+        canvas.requestRenderAll();
     }
 }
 
@@ -2378,10 +2380,10 @@ document.getElementById('btnExport').addEventListener('click', async () => {
         const docW = bg ? bg.width  * bg.scaleX : (pdfBaseW || canvas.width);
         const docH = bg ? bg.height * bg.scaleY : (pdfBaseH || canvas.height);
 
-        // Target 8000 px on longest side; cap at 16384 px (browser limit)
-        let multiplier = Math.max(1.0, 8000 / Math.max(docW, docH));
-        if (docW * multiplier > 16384 || docH * multiplier > 16384) {
-            multiplier = 16384 / Math.max(docW, docH);
+        // Target 4096 px on longest side (high crispness, fast export without freezing memory)
+        let multiplier = Math.max(1.0, 4096 / Math.max(docW, docH));
+        if (docW * multiplier > 6144 || docH * multiplier > 6144) {
+            multiplier = 6144 / Math.max(docW, docH);
         }
 
         // ── Save current viewport state ──────────────────────────────────────
@@ -2995,7 +2997,7 @@ function refreshAttemptsHistory() {
     if (window.lucide) window.lucide.createIcons();
 }
 
-// Restart radar pulse animations for loaded symbols
+// Set radar rings statically for loaded symbols
 function restartRadarAnimations() {
     const circleRadius = 34;
     canvas.getObjects().forEach(obj => {
@@ -3008,33 +3010,6 @@ function restartRadarAnimations() {
                 if (ring1 && ring2) {
                     ring1.set({ radius: circleRadius + 7, opacity: 0.40 });
                     ring2.set({ radius: circleRadius + 16, opacity: 0.20 });
-
-                    function pulseRing(r, initialRadius, targetRadius, delay) {
-                        setTimeout(() => {
-                            if (!r || !canvas.getObjects().includes(obj)) return;
-                            
-                            r.animate('radius', targetRadius, {
-                                duration: 2000,
-                                onChange: () => canvas.requestRenderAll(),
-                                onComplete: () => {
-                                    r.set({
-                                        radius: initialRadius,
-                                        opacity: r === ring1 ? 0.40 : 0.20
-                                    });
-                                    pulseRing(r, initialRadius, targetRadius, 0);
-                                },
-                                easing: fabric.util.ease.easeOutQuad
-                            });
-
-                            r.animate('opacity', 0, {
-                                duration: 2000,
-                                easing: fabric.util.ease.easeOutQuad
-                            });
-                        }, delay);
-                    }
-
-                    pulseRing(ring1, circleRadius + 7, circleRadius + 22, 0);
-                    pulseRing(ring2, circleRadius + 16, circleRadius + 38, 1000);
                 }
             }
         }
